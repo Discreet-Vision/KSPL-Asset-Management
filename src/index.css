@@ -4,71 +4,16 @@
 @theme {
   --font-sans: 'Inter', sans-serif;
   --font-mono: 'Inter', sans-serif;
-  --color-black: #fffff0;
-  --color-zinc-950: #fffff0;
-  --color-zinc-900: #fffff0;
-  --color-zinc-800: #e4e4e7;
-  --color-red-600: #fffff0;
-  --color-red-500: #fffff0;
-  --color-red-400: #fffff0;
-  --color-red-700: #fffff0;
 }
 
 /* Base typography */
 html, body, #root {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #fffff0;
-  color: #18181b;
 }
 
-/* Background canvas consistency */
-body, #root, main, header, aside {
-  background-color: #fffff0;
-}
-
-/* Card and panel styling without breaking nested overlays */
-.bg-black, .bg-zinc-950, .bg-zinc-900 {
-  background-color: #fffff0;
-}
-
-/* Prevent text color from changing to white on menu hover */
+/* Prevent menu item text color from changing to white on hover */
 button:hover, a:hover, nav button:hover, aside button:hover {
-  /* Retain regular legible text color on hover */
   color: inherit;
-}
-
-/* Base text color readability */
-body, p, h1, h2, h3, h4, h5, h6, input, select, textarea {
-  color: #18181b;
-}
-
-.text-white, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400 {
-  color: #18181b;
-}
-
-/* Semantic accent colors */
-.text-red-500, .text-red-600, .text-red-400 {
-  color: #dc2626;
-}
-.text-emerald-400, .text-emerald-500 {
-  color: #059669;
-}
-.text-amber-400, .text-amber-500 {
-  color: #d97706;
-}
-.text-cyan-400, .text-cyan-500 {
-  color: #0891b2;
-}
-
-/* Visible border accents */
-[class*="border-zinc-800"], [class*="border-zinc-700"] {
-  border-color: #d4d4d8;
-}
-
-/* Active tab / active button highlighting */
-button[class*="bg-red-600"], button[class*="font-bold"] {
-  border-color: #18181b;
-  font-weight: 700;
 }
 
 /* Custom scrollbars */
@@ -77,14 +22,14 @@ button[class*="bg-red-600"], button[class*="font-bold"] {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #fffff0;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: #3f3f46;
   border-radius: 3px;
 }
 
-/* Text selection styles - on selection of text change background color to blue */
+/* Text selection styles - highlight selected text in blue */
 ::selection {
   background-color: #2563eb;
   color: #ffffff;
@@ -94,4 +39,5 @@ button[class*="bg-red-600"], button[class*="font-bold"] {
   background-color: #2563eb;
   color: #ffffff;
 }
+
 
