@@ -2,67 +2,96 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
 
 @theme {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Inter', monospace;
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'Inter', sans-serif;
+  --color-black: #fffff0;
+  --color-zinc-950: #fffff0;
+  --color-zinc-900: #fffff0;
+  --color-zinc-800: #e4e4e7;
+  --color-red-600: #fffff0;
+  --color-red-500: #fffff0;
+  --color-red-400: #fffff0;
+  --color-red-700: #fffff0;
 }
 
-/* Base Body Styles */
-html, body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: #09090b;
-  color: #f4f4f5;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Base typography */
+html, body, #root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #fffff0;
+  color: #18181b;
 }
 
-#root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+/* Background canvas consistency */
+body, #root, main, header, aside {
+  background-color: #fffff0;
 }
 
-/* Custom Scrollbars */
+/* Card and panel styling without breaking nested overlays */
+.bg-black, .bg-zinc-950, .bg-zinc-900 {
+  background-color: #fffff0;
+}
+
+/* Prevent text color from changing to white on menu hover */
+button:hover, a:hover, nav button:hover, aside button:hover {
+  /* Retain regular legible text color on hover */
+  color: inherit;
+}
+
+/* Base text color readability */
+body, p, h1, h2, h3, h4, h5, h6, input, select, textarea {
+  color: #18181b;
+}
+
+.text-white, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400 {
+  color: #18181b;
+}
+
+/* Semantic accent colors */
+.text-red-500, .text-red-600, .text-red-400 {
+  color: #dc2626;
+}
+.text-emerald-400, .text-emerald-500 {
+  color: #059669;
+}
+.text-amber-400, .text-amber-500 {
+  color: #d97706;
+}
+.text-cyan-400, .text-cyan-500 {
+  color: #0891b2;
+}
+
+/* Visible border accents */
+[class*="border-zinc-800"], [class*="border-zinc-700"] {
+  border-color: #d4d4d8;
+}
+
+/* Active tab / active button highlighting */
+button[class*="bg-red-600"], button[class*="font-bold"] {
+  border-color: #18181b;
+  font-weight: 700;
+}
+
+/* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: #fffff0;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #d4d4d8;
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
-}
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #27272a;
-  border-radius: 3px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
-}
-
-/* Text selection styles */
+/* Text selection styles - on selection of text change background color to blue */
 ::selection {
-  background-color: #dc2626 !important;
-  color: #ffffff !important;
+  background-color: #2563eb;
+  color: #ffffff;
 }
 
 ::-moz-selection {
-  background-color: #dc2626 !important;
-  color: #ffffff !important;
+  background-color: #2563eb;
+  color: #ffffff;
 }
 

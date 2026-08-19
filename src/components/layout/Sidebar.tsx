@@ -483,22 +483,22 @@ export const Sidebar: React.FC = () => {
                   <button
                     key={`${item.id}-${item.targetTab || item.label}`}
                     onClick={() => handleSelectModule(item)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer group ${
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-medium transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-red-600 text-white font-bold shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                        ? 'bg-red-600 text-white font-bold shadow-sm border-l-4 border-white'
+                        : 'text-zinc-300 hover:bg-zinc-800/40 border-l-4 border-transparent'
                     }`}
                   >
                     <div className="flex items-center space-x-2.5 min-w-0">
-                      <Icon className={`w-4 h-4 shrink-0 transition-colors duration-150 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-red-400'}`} />
-                      <span className="truncate transition-colors duration-150">{item.label}</span>
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
+                      <span className="truncate">{item.label}</span>
                     </div>
                     {item.badge && (
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase font-mono shrink-0 ml-1 ${
                           isActive
                             ? 'bg-white text-red-600'
-                            : 'bg-red-600/20 text-red-400 border border-red-500/30 group-hover:border-red-400 group-hover:text-red-300'
+                            : 'bg-red-600/20 text-red-400 border border-red-500/30'
                         }`}
                       >
                         {item.badge}
@@ -529,7 +529,7 @@ export const Sidebar: React.FC = () => {
   return (
     <>
       {/* Desktop Sticky Sidebar */}
-      <aside className="hidden lg:flex w-64 h-full border-r border-zinc-800 flex-col select-none shrink-0 z-20 overflow-hidden bg-black">
+      <aside className="hidden lg:flex w-64 h-full border-r border-zinc-800 flex-col shrink-0 z-20 overflow-hidden bg-black">
         {sidebarContent}
       </aside>
 
@@ -544,7 +544,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Mobile Off-Canvas Drawer Menu */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-black text-white border-r border-zinc-800 lg:hidden transform transition-transform duration-300 ease-in-out select-none shadow-2xl ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-black text-white border-r border-zinc-800 lg:hidden transform transition-transform duration-300 ease-in-out shadow-2xl ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

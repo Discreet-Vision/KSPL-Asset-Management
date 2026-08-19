@@ -186,7 +186,7 @@ export const Navbar: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch })
                   setShowProfileDropdown(false);
                   setShowUserProfileModal(true);
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 hover:text-white rounded flex items-center space-x-2 cursor-pointer mt-1"
+                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 rounded flex items-center space-x-2 cursor-pointer mt-1"
               >
                 <UserIcon className="w-3.5 h-3.5 text-zinc-400" />
                 <span>User Profile</span>
@@ -205,7 +205,7 @@ export const Navbar: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch })
                     setShowProfileDropdown(false);
                     setShowUserManagementModal(true);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-amber-300 hover:text-white rounded flex items-center space-x-2 cursor-pointer"
+                  className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-amber-300 rounded flex items-center space-x-2 cursor-pointer"
                 >
                   <Users className="w-3.5 h-3.5 text-amber-400" />
                   <span className="font-bold">User Directory & RBAC Matrix</span>
@@ -217,7 +217,7 @@ export const Navbar: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch })
                   setShowProfileDropdown(false);
                   setActiveModule('security_mfa');
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 hover:text-white rounded flex items-center space-x-2 cursor-pointer"
+                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 rounded flex items-center space-x-2 cursor-pointer"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-red-500" />
                 <span>Security & MFA</span>
@@ -229,7 +229,7 @@ export const Navbar: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch })
                     setShowProfileDropdown(false);
                     setActiveModule('super_admin');
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-red-950/60 text-red-400 hover:text-white rounded flex items-center space-x-2 cursor-pointer"
+                  className="w-full text-left px-3 py-2 hover:bg-red-950/60 text-red-400 rounded flex items-center space-x-2 cursor-pointer"
                 >
                   <Crown className="w-3.5 h-3.5 text-red-500" />
                   <span className="font-bold">Super Admin Console</span>
@@ -241,7 +241,7 @@ export const Navbar: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch })
                   setShowProfileDropdown(false);
                   setShowOrgSettingsModal(true);
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 hover:text-white rounded flex items-center space-x-2 cursor-pointer"
+                className="w-full text-left px-3 py-2 hover:bg-zinc-900 text-zinc-300 rounded flex items-center space-x-2 cursor-pointer"
               >
                 <Building2 className="w-3.5 h-3.5 text-zinc-400" />
                 <span>Tenant Profile</span>
