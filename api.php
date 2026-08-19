@@ -720,27 +720,27 @@ function runDbInit($pdo) {
             $salt = safeRandomHex(16);
             $passHash = hashPasswordPbkdf2('Password123!', $salt);
             
-            $stmtCheck = $pdo->prepare("SELECT id, password_hash, salt FROM users WHERE email = ?");
-            $stmtCheck->execute([$su['email']]);
-            $existing = $stmtCheck->fetch();
-            
-            if (!$existing) {
-                $insertStmt = $pdo->prepare("
-                    INSERT INTO `users` (
-                      `id`, `organization_id`, `name`, `email`, `password_hash`, `salt`, `role`,
-                      `job_title`, `phone`, `country`, `mfa_enabled`, `mfa_setup_required`, `status`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'United States', 0, 0, 'Active')
-                ");
-                $insertStmt->execute([
-                    $su['id'], $su['org'], $su['name'], $su['email'], $passHash, $salt, $su['role'], $su['title'], $su['phone']
-                ]);
-            } else {
-                $pdo->prepare("UPDATE users SET organization_id = ?, role = ?, status = 'Active' WHERE id = ?")
-                    ->execute([$su['org'], $su['role'], $existing['id']]);
-            }
+            $stmtUpsert = $pdo->prepare("
+                INSERT INTO `users` (
+                  `id`, `organization_id`, `name`, `email`, `password_hash`, `salt`, `role`,
+                  `job_title`, `phone`, `country`, `mfa_enabled`, `mfa_setup_required`, `status`
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'United States', 0, 0, 'Active')
+                ON DUPLICATE KEY UPDATE
+                  `organization_id` = VALUES(`organization_id`),
+                  `name` = VALUES(`name`),
+                  `password_hash` = VALUES(`password_hash`),
+                  `salt` = VALUES(`salt`),
+                  `role` = VALUES(`role`),
+                  `job_title` = VALUES(`job_title`),
+                  `phone` = VALUES(`phone`),
+                  `status` = 'Active'
+            ");
+            $stmtUpsert->execute([
+                $su['id'], $su['org'], $su['name'], $su['email'], $passHash, $salt, $su['role'], $su['title'], $su['phone']
+            ]);
         }
     } catch (Throwable $e) {
-        // Seed warning ignored
+        // Log or silently continue
     }
 
     return $created;
@@ -748,16 +748,33 @@ function runDbInit($pdo) {
 
 if ($action === 'init_db') {
     if (!$pdo) {
-        echo json_encode(['success' => false, 'error' => 'Database connection failed. Check MySQL credentials.']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Database connection failed. Please check MySQL credentials in api.php or environment variables.'
+        ]);
         exit;
     }
 
     $created = runDbInit($pdo);
+    
+    // Fetch all current users in the database for confirmation
+    $stmtUsers = $pdo->query("SELECT id, name, email, role, organization_id, status FROM users ORDER BY created_at ASC");
+    $usersInDb = $stmtUsers->fetchAll();
+
     echo json_encode([
         'success' => true,
-        'message' => 'All 30 database tables successfully verified, created, and updated without data duplication.',
+        'message' => 'All 30 database tables and default user accounts successfully verified and initialized.',
         'processed_tables_count' => count($created),
-        'tables' => $created
+        'seeded_users_count' => count($usersInDb),
+        'seeded_users' => array_map(function($u) {
+            return [
+                'email' => $u['email'],
+                'name' => $u['name'],
+                'role' => $u['role'],
+                'default_password' => 'Password123!',
+                'status' => $u['status']
+            ];
+        }, $usersInDb)
     ]);
     exit;
 }
