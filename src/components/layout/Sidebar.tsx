@@ -483,22 +483,22 @@ export const Sidebar: React.FC = () => {
                   <button
                     key={`${item.id}-${item.targetTab || item.label}`}
                     onClick={() => handleSelectModule(item)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer group ${
                       isActive
-                        ? 'bg-red-600 text-white font-bold shadow-sm border-l-4 border-white'
-                        : 'text-zinc-300 hover:text-white hover:bg-zinc-900 border-l-4 border-transparent'
+                        ? 'bg-red-600 text-white font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
                     }`}
                   >
                     <div className="flex items-center space-x-2.5 min-w-0">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
-                      <span className="truncate">{item.label}</span>
+                      <Icon className={`w-4 h-4 shrink-0 transition-colors duration-150 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-red-400'}`} />
+                      <span className="truncate transition-colors duration-150">{item.label}</span>
                     </div>
                     {item.badge && (
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase font-mono shrink-0 ml-1 ${
                           isActive
                             ? 'bg-white text-red-600'
-                            : 'bg-red-600/20 text-red-400 border border-red-500/30'
+                            : 'bg-red-600/20 text-red-400 border border-red-500/30 group-hover:border-red-400 group-hover:text-red-300'
                         }`}
                       >
                         {item.badge}

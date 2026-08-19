@@ -2,89 +2,67 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
 
 @theme {
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'Inter', sans-serif;
-  --color-black: #fffff0;
-  --color-zinc-950: #fffff0;
-  --color-zinc-900: #fffff0;
-  --color-zinc-800: #e4e4e7;
-  --color-red-600: #fffff0;
-  --color-red-500: #fffff0;
-  --color-red-400: #fffff0;
-  --color-red-700: #fffff0;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Inter', monospace;
 }
 
-/* Apply Inter sans-serif across all elements and contexts */
-*, html, body, #root, header, aside, main, div, button, input, select, textarea, table, tr, td, th, kbd, section, article, nav, span, p, h1, h2, h3, h4, h5, h6, text, tspan, svg text, .font-mono, .font-sans, [class*="font-"] {
-  font-family: 'Inter', sans-serif !important;
+/* Base Body Styles */
+html, body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #09090b;
+  color: #f4f4f5;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Force #fffff0 background on all elements, buttons, tabs, search, notifications, cards */
-html, body, #root, header, aside, main, div, button, input, select, textarea, table, tr, td, th, kbd, section, article, nav, span, footer, [class*="bg-"] {
-  background-color: #fffff0 !important;
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Maintain transparent backgrounds where explicitly intended */
-.bg-transparent, [class*="bg-transparent"] {
-  background-color: transparent !important;
-}
-
-/* Force dark legible text on all #fffff0 backgrounds */
-html, body, #root, header, aside, main, div, button, input, select, textarea, table, tr, td, th, kbd, section, article, nav, p, span, h1, h2, h3, h4, h5, h6,
-.text-white, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500 {
-  color: #18181b !important;
-}
-
-/* Accent text colors for status indicators and icons */
-.text-red-500, .text-red-600, .text-red-400 {
-  color: #dc2626 !important;
-}
-.text-emerald-400, .text-emerald-500 {
-  color: #059669 !important;
-}
-.text-amber-400, .text-amber-500 {
-  color: #d97706 !important;
-}
-.text-cyan-400, .text-cyan-500 {
-  color: #0891b2 !important;
-}
-
-/* Clear, crisp visible borders on #fffff0 background for all buttons, tabs, cards, search, notifications */
-[class*="border-"], button, input, select, textarea, kbd, table, th, td, header, aside, nav {
-  border-color: #d4d4d8 !important;
-}
-
-.border-transparent {
-  border-color: transparent !important;
-}
-
-/* Active tab / active button highlighting */
-button[class*="bg-red-600"], button[class*="font-bold"] {
-  border-color: #18181b !important;
-  font-weight: 700 !important;
-  background-color: #fffff0 !important;
-}
-
-/* Custom scrollbars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #fffff0;
+  background: #18181b;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: #3f3f46;
   border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
 
-/* Text selection styles - on selection of text change background color to blue */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Text selection styles */
 ::selection {
-  background-color: #2563eb !important;
+  background-color: #dc2626 !important;
   color: #ffffff !important;
 }
 
 ::-moz-selection {
-  background-color: #2563eb !important;
+  background-color: #dc2626 !important;
   color: #ffffff !important;
 }
+
