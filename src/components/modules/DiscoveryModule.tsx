@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ConfigurationItem } from '../../types';
 import { buildHardwareAssetFromScan } from '../../utils/hardwareAttributesMapper';
 import { HardwareAssetDetailModal } from '../common/HardwareAssetDetailModal';
+import { AddHardwareAssetModal } from '../common/AddHardwareAssetModal';
 import {
   downloadAgentScript,
   getClientWindowsScript,
@@ -49,6 +50,7 @@ import {
   Activity,
   ExternalLink,
   Layers,
+  Printer,
 } from 'lucide-react';
 
 export const DiscoveryModule: React.FC = () => {
@@ -103,6 +105,7 @@ export const DiscoveryModule: React.FC = () => {
 
   // Modals & State
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
+  const [isAddHardwareModalOpen, setIsAddHardwareModalOpen] = useState(false);
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
@@ -163,11 +166,11 @@ export const DiscoveryModule: React.FC = () => {
   const [singleIpTest, setSingleIpTest] = useState('10.20.4.15');
   const [isTestingIp, setIsTestingIp] = useState(false);
   // Get dynamic origin for copyable commands
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; iwr -useb "https://ais-pre-p7foijjmi7pztxq6wwok55-680063710747.asia-east1.run.app/api/discovery/agent/scripts/windows" | iex`;
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://itam.kubernesissecurity.com';
+  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $u="${appOrigin}/api/discovery/agent/scripts/windows"; try { iwr -useb $u | iex } catch { iwr -useb "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/windows" | iex }`;
   const winFileCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; & "$HOME\\Downloads\\kspl-discovery-agent.ps1"`;
-  const linuxCommand = `curl -sSL "https://ais-pre-p7foijjmi7pztxq6wwok55-680063710747.asia-east1.run.app/api/discovery/agent/scripts/linux" | sudo bash`;
-  const macCommand = `curl -sSL "https://ais-pre-p7foijjmi7pztxq6wwok55-680063710747.asia-east1.run.app/api/discovery/agent/scripts/macos" | sudo bash`;
+  const linuxCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/linux" | sudo bash || curl -sSL "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/linux" | sudo bash`;
+  const macCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/macos" | sudo bash || curl -sSL "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/macos" | sudo bash`;
   const iosCommand = `curl -X POST "${appOrigin}/api/discovery/agent/heartbeat" -H "Content-Type: application/json" -d '{"hostname":"Corp-iPhone-15Pro","osType":"iOS","osName":"Apple iOS","osVersion":"17.6.1","ipAddress":"10.20.6.99"}'`;
   const [ipTestResult, setIpTestResult] = useState<any | null>(null);
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
@@ -623,15 +626,24 @@ export const DiscoveryModule: React.FC = () => {
       {/* TAB 1: SCAN JOBS & LIVE LOG STREAM */}
       {activeTab === 'jobs' && (
         <div className="space-y-4 font-mono text-xs">
-          <div className="flex items-center justify-between bg-zinc-950 p-3 border border-zinc-800 rounded-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950 p-3 border border-zinc-800 rounded-lg">
             <span className="font-bold text-zinc-300 uppercase">Agentless Discovery Scan Schedules & CIDR Jobs</span>
-            <button
-              onClick={() => setIsNewScanModalOpen(true)}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded flex items-center space-x-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Discovery Job</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setIsAddHardwareModalOpen(true)}
+                className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white font-bold rounded flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-red-400" />
+                <span>+ Add Printer / Device Manually</span>
+              </button>
+              <button
+                onClick={() => setIsNewScanModalOpen(true)}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Discovery Job</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -701,6 +713,72 @@ export const DiscoveryModule: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Auto-Discovered Network Devices & Printers in CMDB */}
+          <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
+            <div className="p-3 bg-black border-b border-zinc-800 font-bold text-white flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <Printer className="w-4 h-4 text-red-500" />
+                <span>DISCOVERED PRINTERS & NETWORK APPLIANCES IN CMDB</span>
+              </div>
+              <span className="text-zinc-400 text-[11px]">
+                {safeCis.filter((c) => (c.ciClassName || '').includes('Printer') || (c.ciClassName || '').includes('Network') || (c.category === 'Hardware' && !c.ciClassName?.includes('Laptop'))).length} Enrolled Devices
+              </span>
+            </div>
+
+            <div className="divide-y divide-zinc-800">
+              {safeCis
+                .filter((c) => (c.ciClassName || '').includes('Printer') || (c.ciClassName || '').includes('Network') || (c.category === 'Hardware' && !c.ciClassName?.includes('Laptop')))
+                .map((device) => (
+                  <div key={device.id} className="p-3 hover:bg-zinc-900 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="font-bold text-white flex items-center space-x-2">
+                        <span className="text-red-400">{device.name}</span>
+                        <span className="bg-zinc-800 text-zinc-300 text-[10px] px-1.5 py-0.5 rounded font-normal">
+                          {device.ciClassName}
+                        </span>
+                        <span className="bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                          {device.lifecycleState}
+                        </span>
+                      </div>
+                      <div className="text-zinc-400 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>Tag: <strong className="text-zinc-200">{device.assetTag}</strong></span>
+                        <span>IP: <strong className="text-zinc-200">{device.ipAddress}</strong></span>
+                        <span>MAC: <strong className="text-zinc-200">{device.macAddress || 'N/A'}</strong></span>
+                        <span>Serial: <strong className="text-zinc-200">{device.serialNumber}</strong></span>
+                        {device.customAttributes?.tonerBlackLevelPct && (
+                          <span className="text-amber-400 font-bold">
+                            Toner: {device.customAttributes.tonerBlackLevelPct}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedAssetForDetail(device);
+                          setDetailModalInitialTab('attributes204');
+                          setIsDetailModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white rounded font-bold text-[11px] cursor-pointer flex items-center space-x-1"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-red-400" />
+                        <span>Inspect (204 Attributes)</span>
+                      </button>
+
+                      <button
+                        onClick={() => setActiveModule('hardware')}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[11px] cursor-pointer flex items-center space-x-1"
+                      >
+                        <span>Manage in Assets</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
@@ -1792,6 +1870,12 @@ export const DiscoveryModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Add Hardware Asset Modal */}
+      <AddHardwareAssetModal
+        isOpen={isAddHardwareModalOpen}
+        onClose={() => setIsAddHardwareModalOpen(false)}
+      />
 
       {/* Hardware Asset Detail Modal for 204 Attributes Inspection */}
       <HardwareAssetDetailModal

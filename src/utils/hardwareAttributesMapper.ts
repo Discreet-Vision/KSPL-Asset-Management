@@ -337,6 +337,55 @@ export function buildHardwareAssetFromScan(
     },
   ];
 
+  // Dynamic User & Ownership Detection from Scan / Agent Payload
+  const rawEmail = (scanData.userEmail || scanData.email || overrides?.email || '').trim();
+  const rawUser = (scanData.username || scanData.userFullName || scanData.userFirstName || scanData.loggedUser || scanData.primaryUser || overrides?.ownerUserName || overrides?.primaryUser || '').trim();
+
+  let assignedFirstName = 'Jitin';
+  let assignedFullName = 'Jitin';
+  let assignedUsername = 'jitin';
+  let assignedEmail = 'jitin@ucliktechnologies.com';
+
+  if (rawEmail && rawEmail.includes('@')) {
+    assignedEmail = rawEmail.toLowerCase();
+    const prefix = assignedEmail.split('@')[0];
+    assignedUsername = prefix.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+
+    // Format first name and full name from email prefix (e.g. 'jitin' -> 'Jitin', 'john.doe' -> 'John Doe')
+    const parts = prefix.split(/[._-]/).filter(Boolean);
+    if (parts.length > 0) {
+      assignedFirstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      assignedFullName = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    } else {
+      assignedFirstName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      assignedFullName = assignedFirstName;
+    }
+  } else if (rawUser) {
+    const cleanUser = rawUser.includes('\\') ? rawUser.split('\\')[1] : rawUser;
+    assignedUsername = cleanUser.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    const parts = cleanUser.split(/[\s._-]+/).filter(Boolean);
+    if (parts.length > 0) {
+      assignedFirstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      assignedFullName = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    } else {
+      assignedFirstName = cleanUser.charAt(0).toUpperCase() + cleanUser.slice(1);
+      assignedFullName = assignedFirstName;
+    }
+    assignedEmail = `${assignedUsername}@ucliktechnologies.com`;
+  } else if (cleanHostname) {
+    // Derive from hostname if it contains a name
+    const hostParts = cleanHostname.split(/[-_]/).filter(Boolean);
+    const candidateName = hostParts.find((p) => p.length >= 3 && !/^\d+$/.test(p) && !/^(DESKTOP|LAPTOP|WIN|SRV|PC|HOST|MAC)/i.test(p));
+    if (candidateName) {
+      assignedFirstName = candidateName.charAt(0).toUpperCase() + candidateName.slice(1).toLowerCase();
+      assignedFullName = assignedFirstName;
+      assignedUsername = candidateName.toLowerCase();
+      assignedEmail = `${assignedUsername}@ucliktechnologies.com`;
+    }
+  }
+
+  const assignedUserId = overrides?.ownerUserId || scanData.userId || `usr-${assignedUsername.replace(/[^a-z0-9]/g, '-')}`;
+
   const fullCi: ConfigurationItem = {
     // 1. Universal Asset Identity — 20 attributes
     id: assetId,
@@ -499,13 +548,13 @@ export function buildHardwareAssetFromScan(
     installedSoftwareCount: candidateSoftware.length,
 
     // 6. User / Ownership — 18 attributes
-    primaryUser: overrides?.ownerUserName || scanData.primaryUser || 'Sarah Jenkins',
-    username: scanData.username || 'sjenkins',
-    userId: overrides?.ownerUserId || scanData.userId || 'usr-101',
-    email: scanData.email || 'sarah.jenkins@enterprise.com',
-    department: overrides?.departmentName || scanData.department || 'Information Technology & Cloud Operations',
+    primaryUser: overrides?.ownerUserName || scanData.primaryUser || scanData.userFullName || assignedFullName,
+    username: overrides?.username || scanData.username || assignedUsername,
+    userId: assignedUserId,
+    email: overrides?.email || scanData.email || scanData.userEmail || assignedEmail,
+    department: overrides?.departmentName || scanData.department || scanData.userDepartment || 'Information Technology & Engineering',
     departmentId: overrides?.departmentId || scanData.departmentId || 'd-1',
-    departmentName: overrides?.departmentName || scanData.departmentName || 'Information Technology & Cloud Operations',
+    departmentName: overrides?.departmentName || scanData.departmentName || scanData.userDepartment || 'Information Technology & Engineering',
     businessUnit: 'Enterprise Global Technology',
     costCenter: overrides?.costCenterId || scanData.costCenter || 'CC-IT-9042',
     costCenterId: overrides?.costCenterId || scanData.costCenterId || 'CC-IT-9042',
@@ -518,10 +567,10 @@ export function buildHardwareAssetFromScan(
     floor: 'Floor 3',
     room: 'Suite 302 / Desk 3-44',
     owner: 'Global IT Operations',
-    ownerUserId: overrides?.ownerUserId || scanData.ownerUserId || 'usr-101',
-    ownerUserName: overrides?.ownerUserName || scanData.ownerUserName || 'Sarah Jenkins',
-    custodian: overrides?.ownerUserName || 'Sarah Jenkins',
-    assignmentDate: '2024-02-01',
+    ownerUserId: assignedUserId,
+    ownerUserName: overrides?.ownerUserName || scanData.ownerUserName || scanData.userFullName || assignedFullName,
+    custodian: overrides?.ownerUserName || scanData.ownerUserName || scanData.userFullName || assignedFullName,
+    assignmentDate: new Date().toISOString().split('T')[0],
     purchaseDate: overrides?.purchaseDate || scanData.purchaseDate || '2024-01-10',
     retirementDate: '2028-01-10',
     cost: overrides?.cost || (isServer ? 6500 : (isMac ? 3499 : 2100)),

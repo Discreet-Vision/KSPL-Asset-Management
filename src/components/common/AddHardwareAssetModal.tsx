@@ -65,6 +65,58 @@ export const AddHardwareAssetModal: React.FC<AddHardwareAssetModalProps> = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    if (name === 'ciClassName') {
+      let presetManufacturer = formData.manufacturer;
+      let presetModel = formData.model;
+      let presetName = formData.name;
+      let presetOs = formData.operatingSystem;
+      let presetTag = formData.assetTag;
+      let presetCost = formData.cost;
+
+      if (value === 'Hardware - Printer / MFP') {
+        presetManufacturer = 'HP Inc.';
+        presetModel = 'LaserJet Pro MFP 4101fdw';
+        presetName = presetName || 'HP LaserJet Pro Office Printer';
+        presetOs = 'HP JetDirect Embedded Firmware (v2024.08)';
+        presetTag = `PRN-${Math.floor(1000 + Math.random() * 9000)}`;
+        presetCost = 699;
+      } else if (value === 'Hardware - Network Switch') {
+        presetManufacturer = 'Cisco Systems';
+        presetModel = 'Catalyst 9300 48-Port PoE+ Switch';
+        presetName = presetName || 'Cisco Core Switch 48P';
+        presetOs = 'Cisco IOS-XE 17.9.4';
+        presetTag = `SW-${Math.floor(1000 + Math.random() * 9000)}`;
+        presetCost = 3499;
+      } else if (value === 'Hardware - Network Router / Firewall') {
+        presetManufacturer = 'Fortinet';
+        presetModel = 'FortiGate 100F Security Gateway';
+        presetName = presetName || 'FortiGate Edge Firewall';
+        presetOs = 'FortiOS 7.4.3';
+        presetTag = `FW-${Math.floor(1000 + Math.random() * 9000)}`;
+        presetCost = 2899;
+      } else if (value === 'Hardware - Wireless Access Point') {
+        presetManufacturer = 'Aruba Networks';
+        presetModel = 'AP-555 Wi-Fi 6 Enterprise AP';
+        presetName = presetName || 'Floor 2 Wi-Fi AP';
+        presetOs = 'ArubaOS 10.4';
+        presetTag = `AP-${Math.floor(1000 + Math.random() * 9000)}`;
+        presetCost = 849;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        ciClassName: value,
+        manufacturer: presetManufacturer,
+        model: presetModel,
+        name: presetName,
+        operatingSystem: presetOs,
+        assetTag: presetTag,
+        cost: presetCost,
+      }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: name === 'cost' ? parseFloat(value) || 0 : value,
@@ -258,12 +310,16 @@ export const AddHardwareAssetModal: React.FC<AddHardwareAssetModalProps> = ({
                     onChange={handleChange}
                     className="w-full bg-black border border-zinc-800 rounded p-2 text-white font-bold focus:outline-none focus:border-red-500 cursor-pointer"
                   >
-                    <option value="Hardware - Laptop">Hardware - Laptop</option>
+                    <option value="Hardware - Printer / MFP">Hardware - Printer / Multifunction Peripheral (MFP)</option>
+                    <option value="Hardware - Laptop">Hardware - Laptop / Notebook</option>
                     <option value="Hardware - Desktop">Hardware - Desktop / Workstation</option>
-                    <option value="Hardware - Server">Hardware - Rack Server</option>
-                    <option value="Hardware - Network Router">Hardware - Network Switch / Router</option>
+                    <option value="Hardware - Server">Hardware - Rack Server / Blade</option>
+                    <option value="Hardware - Network Switch">Hardware - Network Switch (PoE / Core / Aggregation)</option>
+                    <option value="Hardware - Network Router / Firewall">Hardware - Router / Firewall Security Appliance</option>
+                    <option value="Hardware - Wireless Access Point">Hardware - Wi-Fi Access Point (AP)</option>
+                    <option value="Hardware - Monitor">Hardware - External Display / Monitor</option>
                     <option value="Hardware - Mobile">Hardware - Mobile Phone / Tablet</option>
-                    <option value="Hardware - Monitor">Hardware - External Monitor</option>
+                    <option value="Hardware - Peripheral">Hardware - Docking Station / Peripheral</option>
                   </select>
                 </div>
 

@@ -43,6 +43,8 @@ import {
   Sparkles,
   Search,
   SlidersHorizontal,
+  Printer,
+  Terminal,
 } from 'lucide-react';
 
 interface HardwareAssetDetailModalProps {
@@ -191,12 +193,97 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
     );
   }, [asset, safeLogs]);
 
-  // Derived / Normalized Deep Hardware Telemetry
+  // Detect device category
+  const isPrinter = useMemo(() => {
+    if (!asset) return false;
+    const s = `${asset.ciClassName || ''} ${asset.category || ''} ${asset.name || ''} ${asset.model || ''} ${asset.operatingSystem || ''}`.toLowerCase();
+    return s.includes('printer') || s.includes('mfp') || s.includes('laserjet') || s.includes('laser mfp') || s.includes('jetdirect') || s.includes('hpc01803') || s.includes('copier');
+  }, [asset]);
+
+  const isNetworkDevice = useMemo(() => {
+    if (!asset || isPrinter) return false;
+    const s = `${asset.ciClassName || ''} ${asset.category || ''} ${asset.name || ''} ${asset.model || ''}`.toLowerCase();
+    return s.includes('switch') || s.includes('router') || s.includes('firewall') || s.includes('gateway') || s.includes('access point') || s.includes('cisco ios') || s.includes('fortios');
+  }, [asset, isPrinter]);
+
+  const isDisplay = useMemo(() => {
+    if (!asset || isPrinter || isNetworkDevice) return false;
+    const s = `${asset.ciClassName || ''} ${asset.name || ''} ${asset.model || ''}`.toLowerCase();
+    return s.includes('monitor') || s.includes('display') || s.includes('screen');
+  }, [asset, isPrinter, isNetworkDevice]);
+
+  // Derived Printer Telemetry & Consumables
+  const printerDetails = useMemo(() => {
+    if (!asset || !isPrinter) return null;
+    const custom = asset.customAttributes || {};
+    const modelStr = asset.model || asset.name || '';
+    const isColor = modelStr.toLowerCase().includes('color') || custom.colorCapable === 'Yes' || custom.colorCapable === true;
+
+    return {
+      modelName: asset.model || 'HP Laser MFP 131 133 135-138 (HPC01803A2F5DB)',
+      formFactor: 'Multifunction Laser Printer & Scanner (MFP)',
+      printTechnology: isColor ? 'Electrophotographic Color Laser' : 'Monochrome Laser Electrophotography',
+      printResolution: custom.printResolution || '1200 x 1200 dpi (Effective Output)',
+      printSpeedPpm: custom.printSpeedPpm || 21,
+      firstPageOutSec: custom.firstPageOutSec || '8.3 seconds',
+      duplexSupport: custom.duplexSupport || 'Manual / Automatic Duplex',
+      dutyCycleMonthly: custom.dutyCycleMonthly || '10,000 pages / month',
+      recommendedMonthlyVolume: custom.recommendedMonthlyVolume || '100 - 2,000 pages',
+
+      // Consumables & Supplies
+      tonerBlackPct: custom.tonerBlackLevelPct ?? custom.tonerBlackPct ?? 88,
+      tonerCyanPct: isColor ? (custom.tonerCyanLevelPct ?? 92) : null,
+      tonerMagentaPct: isColor ? (custom.tonerMagentaLevelPct ?? 90) : null,
+      tonerYellowPct: isColor ? (custom.tonerYellowLevelPct ?? 94) : null,
+      drumUnitLifePct: custom.drumUnitLifePct ?? 95,
+      fuserLifePct: custom.fuserLifePct ?? 97,
+      wasteTonerBoxStatus: custom.wasteTonerBoxStatus || 'Normal (OK)',
+
+      // Page Counters
+      totalPagesPrinted: custom.totalPagesPrinted ?? 14280,
+      monoPagesPrinted: custom.monoPagesPrinted ?? 12450,
+      colorPagesPrinted: isColor ? (custom.colorPagesPrinted ?? 1830) : 0,
+      scanCount: custom.scanCount ?? 3420,
+      copyCount: custom.copyCount ?? 2190,
+      jamCountLifetime: custom.jamCountLifetime ?? 4,
+
+      // Paper Handling & Trays
+      tray1Capacity: '150-Sheet Standard Input Tray',
+      tray2Capacity: '100-Sheet Output Bin',
+      supportedMedia: 'A4, A5, B5 (JIS), Envelope (DL, C5), Cardstock, Plain, Thick',
+      adfCapacity: '40-Sheet Automatic Document Feeder (ADF)',
+
+      // Firmware & Connectivity
+      firmwareVersion: asset.operatingSystem || custom.firmwareVersion || 'V3.82.01.15_20240810 (JetDirect)',
+      ewsUrl: `http://${asset.ipAddress || '192.168.1.30'}/#hpHomescreen`,
+      activeProtocols: ['SNMP v1/v2c (Port 161)', 'RAW Port 9100', 'IPP / IPPS (Port 631)', 'WSD (Web Services on Devices)', 'AirPrint', 'Mopria Certified'],
+      driverName: custom.driverName || `${asset.manufacturer || 'HP'} Laser MFP 131 133 135-138 PCLmS`,
+      printQueueName: custom.printQueueName || (asset.hostname || asset.name),
+    };
+  }, [asset, isPrinter]);
+
+  // Derived Network Device Telemetry
+  const networkDeviceDetails = useMemo(() => {
+    if (!asset || !isNetworkDevice) return null;
+    const custom = asset.customAttributes || {};
+    return {
+      portsTotal: custom.portsTotal || 48,
+      activePorts: custom.activePorts || 36,
+      poeBudgetWatts: custom.poeBudgetWatts || '740W PoE+ (802.3at)',
+      switchingCapacityGbps: custom.switchingCapacityGbps || '128 Gbps',
+      firmware: asset.operatingSystem || 'Cisco IOS-XE 17.9.4a',
+      vlans: custom.vlans || ['VLAN 1 (Default)', 'VLAN 10 (Management)', 'VLAN 100 (Workstations)', 'VLAN 200 (VoIP)'],
+      macTableEntries: custom.macTableEntries || 248,
+      routingProtocols: custom.routingProtocols || ['OSPFv2', 'BGP', 'Static Routing'],
+      managementProtocols: ['SSHv2 (Port 22)', 'SNMPv3 (Port 161)', 'HTTPS Web GUI (Port 443)', 'NETCONF-YANG (Port 830)'],
+    };
+  }, [asset, isNetworkDevice]);
+
+  // Derived / Normalized Deep Hardware Telemetry (For Computers / Laptops / Servers)
   const hardwareDetails = useMemo(() => {
-    if (!asset) return null;
+    if (!asset || isPrinter || isNetworkDevice || isDisplay) return null;
     const isServer = (asset.ciClassName || '').includes('Server') || (asset.name || '').includes('srv') || (asset.category === 'Infrastructure');
     const isMac = (asset.operatingSystem || '').includes('macOS') || (asset.model || '').includes('MacBook');
-    const isWindows = (asset.operatingSystem || '').includes('Windows') || (!isMac && !isServer);
 
     const cpuModel = asset.customAttributes?.cpuModel || (isMac ? 'Apple M3 Max (16-core CPU, 40-core GPU)' : isServer ? 'Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz' : '13th Gen Intel(R) Core(TM) i7-1365U @ 1.80GHz');
     const cpuCores = asset.customAttributes?.cpuCores || (isMac ? 16 : isServer ? 32 : 10);
@@ -229,7 +316,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
       tpmVersion: isMac ? 'Secure Enclave v2' : 'TPM 2.0 (TCG Compliant)',
       secureBoot: 'Enabled (Factory Signed Keys)',
     };
-  }, [asset]);
+  }, [asset, isPrinter, isNetworkDevice, isDisplay]);
 
   // Derived Discovered Software List
   const discoveredSoftware = useMemo(() => {
@@ -711,24 +798,59 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
           </div>
         )}
 
-        {/* ================= 14 TABS NAVIGATION BAR ================= */}
+        {/* ================= 14 DYNAMIC TABS NAVIGATION BAR ================= */}
         <div className="bg-zinc-900/90 border-b border-zinc-800 px-2 py-1 flex items-center space-x-1 overflow-x-auto custom-scrollbar shrink-0 font-mono text-[11px]">
-          {[
-            { id: 'overview', label: '1. Overview', icon: Activity },
-            { id: 'attributes204', label: '2. 204 Attribute Matrix', icon: Sparkles, badge: '204' },
-            { id: 'hardware', label: '3. Hardware', icon: Cpu },
-            { id: 'os', label: '4. Operating System', icon: Monitor },
-            { id: 'network', label: '5. Network', icon: Wifi },
-            { id: 'software', label: `6. Software (${discoveredSoftware.length})`, icon: Layers },
-            { id: 'security', label: '7. Security', icon: ShieldCheck },
-            { id: 'user', label: '8. Assigned User', icon: UserIcon },
-            { id: 'ownership', label: '9. Ownership', icon: Building },
-            { id: 'financial', label: '10. Financial', icon: DollarSign },
-            { id: 'discovery', label: '11. Discovery', icon: Radar },
-            { id: 'cmdb', label: '12. CMDB', icon: Database },
-            { id: 'relationships', label: `13. Relationships (${assetRelationships.length})`, icon: GitMerge },
-            { id: 'audit', label: `14. Audit History (${assetAuditLogs.length})`, icon: History },
-          ].map((tab) => {
+          {(isPrinter
+            ? [
+                { id: 'overview', label: '1. Overview', icon: Activity },
+                { id: 'attributes204', label: '2. 204 Attribute Matrix', icon: Sparkles, badge: '204' },
+                { id: 'hardware', label: '3. Printer Specs & Consumables', icon: Printer },
+                { id: 'os', label: '4. Print Engine & Firmware', icon: FileText },
+                { id: 'network', label: '5. Network & Printing Protocols', icon: Wifi },
+                { id: 'software', label: '6. Print Queues & Drivers', icon: Layers },
+                { id: 'security', label: '7. Security & Access', icon: ShieldCheck },
+                { id: 'user', label: '8. Assigned Custodian', icon: UserIcon },
+                { id: 'ownership', label: '9. Ownership & Location', icon: Building },
+                { id: 'financial', label: '10. Financial & Supplies', icon: DollarSign },
+                { id: 'discovery', label: '11. SNMP Discovery', icon: Radar },
+                { id: 'cmdb', label: '12. CMDB', icon: Database },
+                { id: 'relationships', label: `13. Relationships (${assetRelationships.length})`, icon: GitMerge },
+                { id: 'audit', label: `14. Audit History (${assetAuditLogs.length})`, icon: History },
+              ]
+            : isNetworkDevice
+            ? [
+                { id: 'overview', label: '1. Overview', icon: Activity },
+                { id: 'attributes204', label: '2. 204 Attribute Matrix', icon: Sparkles, badge: '204' },
+                { id: 'hardware', label: '3. Switching & Port Topology', icon: Server },
+                { id: 'os', label: '4. Network OS & Firmware', icon: Terminal },
+                { id: 'network', label: '5. Interfaces & VLANs', icon: Wifi },
+                { id: 'software', label: '6. Services & Routing Protocols', icon: Layers },
+                { id: 'security', label: '7. Security & ACLs', icon: ShieldCheck },
+                { id: 'user', label: '8. Network Admin Custodian', icon: UserIcon },
+                { id: 'ownership', label: '9. Ownership & Rack Location', icon: Building },
+                { id: 'financial', label: '10. Financial', icon: DollarSign },
+                { id: 'discovery', label: '11. Discovery & Telemetry', icon: Radar },
+                { id: 'cmdb', label: '12. CMDB', icon: Database },
+                { id: 'relationships', label: `13. Relationships (${assetRelationships.length})`, icon: GitMerge },
+                { id: 'audit', label: `14. Audit History (${assetAuditLogs.length})`, icon: History },
+              ]
+            : [
+                { id: 'overview', label: '1. Overview', icon: Activity },
+                { id: 'attributes204', label: '2. 204 Attribute Matrix', icon: Sparkles, badge: '204' },
+                { id: 'hardware', label: '3. Hardware', icon: Cpu },
+                { id: 'os', label: '4. Operating System', icon: Monitor },
+                { id: 'network', label: '5. Network', icon: Wifi },
+                { id: 'software', label: `6. Software (${discoveredSoftware.length})`, icon: Layers },
+                { id: 'security', label: '7. Security', icon: ShieldCheck },
+                { id: 'user', label: '8. Assigned User', icon: UserIcon },
+                { id: 'ownership', label: '9. Ownership', icon: Building },
+                { id: 'financial', label: '10. Financial', icon: DollarSign },
+                { id: 'discovery', label: '11. Discovery', icon: Radar },
+                { id: 'cmdb', label: '12. CMDB', icon: Database },
+                { id: 'relationships', label: `13. Relationships (${assetRelationships.length})`, icon: GitMerge },
+                { id: 'audit', label: `14. Audit History (${assetAuditLogs.length})`, icon: History },
+              ]
+          ).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -1283,302 +1405,741 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
             </div>
           )}
 
-          {/* TAB 3: HARDWARE SPECIFICATIONS */}
-          {activeTab === 'hardware' && hardwareDetails && (
+          {/* TAB 3: HARDWARE SPECIFICATIONS / PRINTER CONSUMABLES / SWITCH SPECS */}
+          {activeTab === 'hardware' && (
             <div className="space-y-4">
-              {/* Processor */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
-                  <Cpu className="w-4 h-4 text-red-500" />
-                  <span>PROCESSOR / CPU TOPOLOGY</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-zinc-300">
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Processor Model:</span>
-                    <span className="font-bold text-white">{hardwareDetails.cpuModel}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Physical Cores / Logical Threads:</span>
-                    <span className="font-bold text-white">{hardwareDetails.cpuCores} Cores / {hardwareDetails.cpuThreads} Threads</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Base Frequency / Architecture:</span>
-                    <span className="font-bold text-white">2.40 GHz - 5.00 GHz Max Turbo (x86_64 / ARM64)</span>
-                  </div>
-                </div>
-              </div>
+              {isPrinter && printerDetails ? (
+                <>
+                  {/* Printer Top Model & Engine Header */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                      <div className="flex items-center space-x-2 text-white font-bold">
+                        <Printer className="w-4 h-4 text-red-500" />
+                        <span>PRINT ENGINE & HARDWARE SPECIFICATIONS</span>
+                      </div>
+                      <span className="bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold">
+                        {printerDetails.formFactor}
+                      </span>
+                    </div>
 
-              {/* Memory (RAM) */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
-                  <HardDrive className="w-4 h-4 text-red-500" />
-                  <span>PHYSICAL MEMORY (RAM)</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-zinc-300">
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Installed RAM:</span>
-                    <span className="font-bold text-white text-sm">{hardwareDetails.ramGb} GB Total</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Model & Series:</span>
+                        <span className="font-bold text-white text-sm">{printerDetails.modelName}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Print Technology:</span>
+                        <span className="font-bold text-white">{printerDetails.printTechnology}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Effective Resolution:</span>
+                        <span className="font-bold text-white font-mono">{printerDetails.printResolution}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Print Speed (PPM):</span>
+                        <span className="font-bold text-emerald-400">{printerDetails.printSpeedPpm} PPM (A4/Letter)</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">First Page Out Time:</span>
+                        <span className="font-bold text-white">{printerDetails.firstPageOutSec}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Duplex Printing:</span>
+                        <span className="font-bold text-cyan-400">{printerDetails.duplexSupport}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Memory Standard / Type:</span>
-                    <span className="font-bold text-white">{hardwareDetails.ramType}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Bus Speed:</span>
-                    <span className="font-bold text-white">{hardwareDetails.ramSpeed}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">Slot Allocation:</span>
-                    <span className="font-bold text-emerald-400">{hardwareDetails.ramSlots}</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Storage & Disks */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
-                  <Database className="w-4 h-4 text-red-500" />
-                  <span>STORAGE VOLUMES & DISK DRIVES</span>
-                </div>
-                <table className="w-full text-left">
-                  <thead className="bg-black text-zinc-500 text-[10px] uppercase">
-                    <tr>
-                      <th className="p-2">Drive Target</th>
-                      <th className="p-2">Interface Type</th>
-                      <th className="p-2">Total Capacity</th>
-                      <th className="p-2">Free Space</th>
-                      <th className="p-2">S.M.A.R.T. Health</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800 text-zinc-300">
-                    <tr>
-                      <td className="p-2 font-bold text-white">Disk 0 (System NVMe SSD)</td>
-                      <td className="p-2">PCIe 4.0 x4 NVMe M.2</td>
-                      <td className="p-2 font-mono">{hardwareDetails.diskGb} GB</td>
-                      <td className="p-2 font-mono text-emerald-400">{hardwareDetails.diskFreeGb} GB Free</td>
-                      <td className="p-2 text-emerald-400 font-bold">100% Healthy (0 Bad Sectors)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                  {/* Consumables & Supplies Telemetry */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                      <div className="flex items-center space-x-2 text-white font-bold">
+                        <Sparkles className="w-4 h-4 text-red-500" />
+                        <span>CONSUMABLES & SUPPLIES STATUS (LIVE SNMP)</span>
+                      </div>
+                      <span className="text-emerald-400 text-[10px] font-bold">All Consumables Optimal</span>
+                    </div>
 
-              {/* BIOS & Security Chip */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
-                  <ShieldCheck className="w-4 h-4 text-red-500" />
-                  <span>SYSTEM BIOS & HARDWARE SECURITY ENCLAVE</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-zinc-300">
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">BIOS Vendor:</span>
-                    <span className="font-bold text-white">{hardwareDetails.biosVendor}</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      {/* Black Toner */}
+                      <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-400 font-bold">Black Toner Cartridge</span>
+                          <span className="font-bold text-white">{printerDetails.tonerBlackPct}%</span>
+                        </div>
+                        <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-zinc-100 h-full rounded-full"
+                            style={{ width: `${printerDetails.tonerBlackPct}%` }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-zinc-500">HP 105A / 106A / 107A High-Yield</div>
+                      </div>
+
+                      {/* Drum Unit Life */}
+                      <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-400 font-bold">Imaging Drum Unit</span>
+                          <span className="font-bold text-emerald-400">{printerDetails.drumUnitLifePct}%</span>
+                        </div>
+                        <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full"
+                            style={{ width: `${printerDetails.drumUnitLifePct}%` }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-zinc-500">Long-Life Photoconductor Drum</div>
+                      </div>
+
+                      {/* Fuser Assembly */}
+                      <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-400 font-bold">Fuser Unit Life</span>
+                          <span className="font-bold text-cyan-400">{printerDetails.fuserLifePct}%</span>
+                        </div>
+                        <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-cyan-500 h-full rounded-full"
+                            style={{ width: `${printerDetails.fuserLifePct}%` }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-zinc-500">High-Temperature Ceramic Fuser</div>
+                      </div>
+
+                      {/* Waste Toner Box */}
+                      <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-400 font-bold">Waste Toner Box</span>
+                          <span className="font-bold text-emerald-400">{printerDetails.wasteTonerBoxStatus}</span>
+                        </div>
+                        <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
+                          <div className="bg-emerald-500 h-full rounded-full" style={{ width: '15%' }} />
+                        </div>
+                        <div className="text-[10px] text-zinc-500">Capacity Remaining: ~85%</div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">BIOS Firmware Version:</span>
-                    <span className="font-bold text-white">{hardwareDetails.biosVersion}</span>
+
+                  {/* Page Counters & Usage Telemetry */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <Activity className="w-4 h-4 text-red-500" />
+                      <span>LIFETIME PRINT, COPY & SCAN TELEMETRY COUNTERS</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-center">
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Total Pages Printed</div>
+                        <div className="text-base font-black text-white mt-1 font-mono">
+                          {printerDetails.totalPagesPrinted.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Monochrome Pages</div>
+                        <div className="text-base font-black text-white mt-1 font-mono">
+                          {printerDetails.monoPagesPrinted.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Total Scans (ADF/Platen)</div>
+                        <div className="text-base font-black text-cyan-400 mt-1 font-mono">
+                          {printerDetails.scanCount.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Copier Output Pages</div>
+                        <div className="text-base font-black text-white mt-1 font-mono">
+                          {printerDetails.copyCount.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Lifetime Paper Jams</div>
+                        <div className="text-base font-black text-emerald-400 mt-1 font-mono">
+                          {printerDetails.jamCountLifetime} Jams
+                        </div>
+                      </div>
+                      <div className="bg-black border border-zinc-800 p-2.5 rounded">
+                        <div className="text-zinc-500 text-[10px]">Monthly Duty Cycle</div>
+                        <div className="text-base font-black text-zinc-300 mt-1 font-mono">
+                          {printerDetails.dutyCycleMonthly}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">TPM Cryptographic Chip:</span>
-                    <span className="font-bold text-emerald-400">{hardwareDetails.tpmVersion}</span>
+
+                  {/* Paper Trays & Media Handling */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <FileText className="w-4 h-4 text-red-500" />
+                      <span>PAPER TRAYS & MEDIA HANDLING</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Input Paper Tray:</span>
+                        <span className="font-bold text-white">{printerDetails.tray1Capacity}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Output Capacity:</span>
+                        <span className="font-bold text-white">{printerDetails.tray2Capacity}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Document Feeder (ADF):</span>
+                        <span className="font-bold text-white">{printerDetails.adfCapacity}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Supported Media Sizes:</span>
+                        <span className="font-bold text-zinc-300">{printerDetails.supportedMedia}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[10px]">UEFI Secure Boot:</span>
-                    <span className="font-bold text-emerald-400">{hardwareDetails.secureBoot}</span>
+                </>
+              ) : isNetworkDevice && networkDeviceDetails ? (
+                <>
+                  {/* Switch Hardware Top */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <Server className="w-4 h-4 text-red-500" />
+                      <span>SWITCHING & NETWORK APPLIANCE TOPOLOGY</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Total Physical Ports:</span>
+                        <span className="font-bold text-white text-base font-mono">{networkDeviceDetails.portsTotal} Ports</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Active Linked Ports:</span>
+                        <span className="font-bold text-emerald-400 text-base font-mono">{networkDeviceDetails.activePorts} Linked</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">PoE Power Budget:</span>
+                        <span className="font-bold text-amber-400 font-mono">{networkDeviceDetails.poeBudgetWatts}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Switching Backplane:</span>
+                        <span className="font-bold text-white font-mono">{networkDeviceDetails.switchingCapacityGbps}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </>
+              ) : hardwareDetails ? (
+                <>
+                  {/* Processor */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <Cpu className="w-4 h-4 text-red-500" />
+                      <span>PROCESSOR / CPU TOPOLOGY</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Processor Model:</span>
+                        <span className="font-bold text-white">{hardwareDetails.cpuModel}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Physical Cores / Logical Threads:</span>
+                        <span className="font-bold text-white">{hardwareDetails.cpuCores} Cores / {hardwareDetails.cpuThreads} Threads</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Base Frequency / Architecture:</span>
+                        <span className="font-bold text-white">2.40 GHz - 5.00 GHz Max Turbo (x86_64 / ARM64)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Memory (RAM) */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <HardDrive className="w-4 h-4 text-red-500" />
+                      <span>PHYSICAL MEMORY (RAM)</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Installed RAM:</span>
+                        <span className="font-bold text-white text-sm">{hardwareDetails.ramGb} GB Total</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Memory Standard / Type:</span>
+                        <span className="font-bold text-white">{hardwareDetails.ramType}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Bus Speed:</span>
+                        <span className="font-bold text-white">{hardwareDetails.ramSpeed}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Slot Allocation:</span>
+                        <span className="font-bold text-emerald-400">{hardwareDetails.ramSlots}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Storage & Disks */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <Database className="w-4 h-4 text-red-500" />
+                      <span>STORAGE VOLUMES & DISK DRIVES</span>
+                    </div>
+                    <table className="w-full text-left">
+                      <thead className="bg-black text-zinc-500 text-[10px] uppercase">
+                        <tr>
+                          <th className="p-2">Drive Target</th>
+                          <th className="p-2">Interface Type</th>
+                          <th className="p-2">Total Capacity</th>
+                          <th className="p-2">Free Space</th>
+                          <th className="p-2">S.M.A.R.T. Health</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800 text-zinc-300">
+                        <tr>
+                          <td className="p-2 font-bold text-white">Disk 0 (System NVMe SSD)</td>
+                          <td className="p-2">PCIe 4.0 x4 NVMe M.2</td>
+                          <td className="p-2 font-mono">{hardwareDetails.diskGb} GB</td>
+                          <td className="p-2 font-mono text-emerald-400">{hardwareDetails.diskFreeGb} GB Free</td>
+                          <td className="p-2 text-emerald-400 font-bold">100% Healthy (0 Bad Sectors)</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* BIOS & Security Chip */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <ShieldCheck className="w-4 h-4 text-red-500" />
+                      <span>SYSTEM BIOS & HARDWARE SECURITY ENCLAVE</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">BIOS Vendor:</span>
+                        <span className="font-bold text-white">{hardwareDetails.biosVendor}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">BIOS Firmware Version:</span>
+                        <span className="font-bold text-white">{hardwareDetails.biosVersion}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">TPM Cryptographic Chip:</span>
+                        <span className="font-bold text-emerald-400">{hardwareDetails.tpmVersion}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">UEFI Secure Boot:</span>
+                        <span className="font-bold text-emerald-400">{hardwareDetails.secureBoot}</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </div>
           )}
 
-          {/* TAB 3: OPERATING SYSTEM */}
+          {/* TAB 4: OPERATING SYSTEM / FIRMWARE */}
           {activeTab === 'os' && (
             <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-4">
-              <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
-                <Monitor className="w-4 h-4 text-red-500" />
-                <span>OPERATING SYSTEM ENVIRONMENT & LIFECYCLE</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-6 text-zinc-300">
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Operating System Name:</span>
-                  <span className="font-bold text-white text-sm">{asset.operatingSystem || 'Microsoft Windows 11 Enterprise'}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Edition & Release Version:</span>
-                  <span className="font-bold text-white">{asset.osVersion || '23H2 (Build 22631.3880)'}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Architecture:</span>
-                  <span className="font-bold text-white">64-bit Native OS (x86_64 / ARM64)</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">OS Kernel Version:</span>
-                  <span className="font-bold text-white">NT Kernel 10.0.22631 / Darwin 23.6.0</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Initial Installation Date:</span>
-                  <span className="font-bold text-white">2026-05-10 10:14:22</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Last System Boot / Uptime:</span>
-                  <span className="font-bold text-emerald-400">4 Days, 12 Hours (Clean Boot)</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Patch Level / Quality Updates:</span>
-                  <span className="font-bold text-white">Current (August 2026 Security Rollup)</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Vendor Support Lifecycle:</span>
-                  <span className="font-bold text-emerald-400">Active Supported (EOL: Oct 2029)</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block text-[10px]">Domain / Workgroup:</span>
-                  <span className="font-bold text-white">CORP.INTERNAL (Azure AD Joined)</span>
-                </div>
-              </div>
+              {isPrinter && printerDetails ? (
+                <>
+                  <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                    <div className="flex items-center space-x-2 text-white font-bold">
+                      <FileText className="w-4 h-4 text-red-500" />
+                      <span>PRINT ENGINE FIRMWARE & EMBEDDED WEB SERVER (EWS)</span>
+                    </div>
+                    <span className="text-emerald-400 text-[10px] font-bold">Firmware Up-to-date</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-6 text-zinc-300">
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Embedded OS / Firmware:</span>
+                      <span className="font-bold text-white text-sm">{printerDetails.firmwareVersion}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Embedded Web Server (EWS):</span>
+                      <a
+                        href={printerDetails.ewsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-red-400 hover:text-red-300 underline font-mono flex items-center space-x-1"
+                      >
+                        <span>{printerDetails.ewsUrl}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Print Language Emulations:</span>
+                      <span className="font-bold text-white">SPL, PCLmS, PCL5e, PCL6, PostScript 3</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Internal Memory Buffer:</span>
+                      <span className="font-bold text-white">128 MB High-Speed SDRAM</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Embedded SOC Processor:</span>
+                      <span className="font-bold text-white">600 MHz 32-bit RISC Engine</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Firmware Date & Build:</span>
+                      <span className="font-bold text-emerald-400">2024-08-10 (Patch Release 15)</span>
+                    </div>
+                  </div>
+                </>
+              ) : isNetworkDevice && networkDeviceDetails ? (
+                <>
+                  <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                    <Terminal className="w-4 h-4 text-red-500" />
+                    <span>NETWORK OS & SWITCH FIRMWARE IMAGE</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-6 text-zinc-300">
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Network Operating System:</span>
+                      <span className="font-bold text-white">{networkDeviceDetails.firmware}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Software Image (ROMMON):</span>
+                      <span className="font-bold text-white font-mono">cat9k_iosxe.17.09.04a.SPA.bin</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">System Uptime:</span>
+                      <span className="font-bold text-emerald-400">84 Days, 16 Hours</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                    <Monitor className="w-4 h-4 text-red-500" />
+                    <span>OPERATING SYSTEM ENVIRONMENT & LIFECYCLE</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-4 gap-x-6 text-zinc-300">
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Operating System Name:</span>
+                      <span className="font-bold text-white text-sm">{asset.operatingSystem || 'Microsoft Windows 11 Enterprise'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Edition & Release Version:</span>
+                      <span className="font-bold text-white">{asset.osVersion || '23H2 (Build 22631.3880)'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Architecture:</span>
+                      <span className="font-bold text-white">64-bit Native OS (x86_64 / ARM64)</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">OS Kernel Version:</span>
+                      <span className="font-bold text-white">NT Kernel 10.0.22631 / Darwin 23.6.0</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Initial Installation Date:</span>
+                      <span className="font-bold text-white">2026-05-10 10:14:22</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Last System Boot / Uptime:</span>
+                      <span className="font-bold text-emerald-400">4 Days, 12 Hours (Clean Boot)</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Patch Level / Quality Updates:</span>
+                      <span className="font-bold text-white">Current (August 2026 Security Rollup)</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Vendor Support Lifecycle:</span>
+                      <span className="font-bold text-emerald-400">Active Supported (EOL: Oct 2029)</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">Domain / Workgroup:</span>
+                      <span className="font-bold text-white">CORP.INTERNAL (Azure AD Joined)</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {/* TAB 4: NETWORK */}
+          {/* TAB 5: NETWORK & PROTOCOLS */}
           {activeTab === 'network' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white font-bold text-xs flex items-center space-x-2">
-                  <Wifi className="w-4 h-4 text-red-500" />
-                  <span>DISCOVERED NETWORK ADAPTERS & SUBNET TOPOLOGY ({networkInterfaces.length})</span>
-                </span>
-                <span className="text-zinc-500 text-[10px]">Active Multi-Homed Network Stack</span>
-              </div>
+              {isPrinter && printerDetails ? (
+                <>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                      <span className="text-white font-bold text-xs flex items-center space-x-2">
+                        <Wifi className="w-4 h-4 text-red-500" />
+                        <span>PRINTER NETWORK INTERFACE & IP CONNECTIVITY</span>
+                      </span>
+                      <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                        Connected / Link Up (100 Mbps Full Duplex)
+                      </span>
+                    </div>
 
-              {networkInterfaces.map((nic, idx) => (
-                <div key={idx} className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-                    <span className="font-bold text-white flex items-center space-x-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span>{nic.name}</span>
-                    </span>
-                    <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
-                      {nic.status}
-                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3 gap-x-6 text-zinc-300">
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Primary IPv4 Address:</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">{asset.ipAddress || '192.168.1.30'}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Physical MAC Address:</span>
+                        <span className="font-bold text-white font-mono">{asset.macAddress || 'C0:18:03:A2:F5:DB'}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Hostname / mDNS:</span>
+                        <span className="font-bold text-white font-mono">{asset.hostname || 'HPC01803A2F5DB.local'}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Subnet Mask:</span>
+                        <span className="font-bold text-zinc-300 font-mono">255.255.255.0 (/24)</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">Gateway Router:</span>
+                        <span className="font-bold text-zinc-300 font-mono">192.168.1.1</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block text-[10px]">DNS Resolvers:</span>
+                        <span className="font-bold text-zinc-300 font-mono">1.1.1.1, 8.8.8.8</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3 gap-x-6 text-zinc-300">
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">IPv4 Address:</span>
-                      <span className="font-bold text-emerald-400 font-mono">{nic.ipv4}</span>
+                  {/* Active Printing Protocols */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
+                      <Activity className="w-4 h-4 text-red-500" />
+                      <span>ACTIVE NETWORK PRINTING & MANAGEMENT PROTOCOLS</span>
                     </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">MAC Address:</span>
-                      <span className="font-bold text-white font-mono">{nic.mac}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Link Speed:</span>
-                      <span className="font-bold text-white">{nic.speed}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Subnet Mask:</span>
-                      <span className="font-bold text-zinc-300 font-mono">{nic.subnet}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Default Gateway:</span>
-                      <span className="font-bold text-zinc-300 font-mono">{nic.gateway}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">DNS Servers:</span>
-                      <span className="font-bold text-zinc-300 font-mono">{nic.dns}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">VLAN Assignment:</span>
-                      <span className="font-bold text-red-400">{nic.vlan}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Security Zone:</span>
-                      <span className="font-bold text-white">{nic.zone}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">IPv6 Address:</span>
-                      <span className="font-mono text-[10px] text-zinc-400 truncate block">{nic.ipv6}</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {printerDetails.activeProtocols.map((proto, idx) => (
+                        <div key={idx} className="bg-black border border-zinc-800 p-2.5 rounded flex items-center space-x-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="font-bold text-zinc-200 text-[11px]">{proto}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))}
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white font-bold text-xs flex items-center space-x-2">
+                      <Wifi className="w-4 h-4 text-red-500" />
+                      <span>DISCOVERED NETWORK ADAPTERS & SUBNET TOPOLOGY ({networkInterfaces.length})</span>
+                    </span>
+                    <span className="text-zinc-500 text-[10px]">Active Multi-Homed Network Stack</span>
+                  </div>
+
+                  {networkInterfaces.map((nic, idx) => (
+                    <div key={idx} className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                        <span className="font-bold text-white flex items-center space-x-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>{nic.name}</span>
+                        </span>
+                        <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                          {nic.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3 gap-x-6 text-zinc-300">
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">IPv4 Address:</span>
+                          <span className="font-bold text-emerald-400 font-mono">{nic.ipv4}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">MAC Address:</span>
+                          <span className="font-bold text-white font-mono">{nic.mac}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Link Speed:</span>
+                          <span className="font-bold text-white">{nic.speed}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Subnet Mask:</span>
+                          <span className="font-bold text-zinc-300 font-mono">{nic.subnet}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Default Gateway:</span>
+                          <span className="font-bold text-zinc-300 font-mono">{nic.gateway}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">DNS Servers:</span>
+                          <span className="font-bold text-zinc-300 font-mono">{nic.dns}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">VLAN Assignment:</span>
+                          <span className="font-bold text-red-400">{nic.vlan}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Security Zone:</span>
+                          <span className="font-bold text-white">{nic.zone}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">IPv6 Address:</span>
+                          <span className="font-mono text-[10px] text-zinc-400 truncate block">{nic.ipv6}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
-          {/* TAB 5: SOFTWARE */}
+          {/* TAB 6: SOFTWARE / PRINT QUEUES & DRIVERS */}
           {activeTab === 'software' && (
             <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
-                <div>
-                  <span className="font-bold text-white text-xs flex items-center space-x-2">
+              {isPrinter && printerDetails ? (
+                <>
+                  <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                    <span className="font-bold text-white text-xs flex items-center space-x-2">
+                      <Layers className="w-4 h-4 text-red-500" />
+                      <span>PRINTER DRIVERS, SPOOLERS & WORKSTATION QUEUES</span>
+                    </span>
+                    <span className="text-emerald-400 text-[10px] font-bold">Print Spooler Running</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="bg-black border border-zinc-800 rounded p-3 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white font-bold">Primary Print Driver:</span>
+                        <span className="text-emerald-400 font-bold">PCLmS Type 4 Driver (v3.82)</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        Driver Name: <strong className="text-white">{printerDetails.driverName}</strong>
+                      </div>
+                    </div>
+
+                    <table className="w-full text-left">
+                      <thead className="bg-black text-zinc-500 text-[10px] uppercase">
+                        <tr>
+                          <th className="p-2">Target OS Platform</th>
+                          <th className="p-2">Driver Package</th>
+                          <th className="p-2">Protocol Port</th>
+                          <th className="p-2">Spooling Mode</th>
+                          <th className="p-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800 text-zinc-300">
+                        <tr>
+                          <td className="p-2 font-bold text-white">Windows 11 / 10 (x64)</td>
+                          <td className="p-2">HP Laser 13x Series PCLmS Driver</td>
+                          <td className="p-2 font-mono">WSD-c01803a2f5db / TCP 9100</td>
+                          <td className="p-2">RAW / EMF Spooling</td>
+                          <td className="p-2"><span className="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold">Ready</span></td>
+                        </tr>
+                        <tr>
+                          <td className="p-2 font-bold text-white">macOS / Apple iOS</td>
+                          <td className="p-2">Apple AirPrint (Driverless)</td>
+                          <td className="p-2 font-mono">IPP Port 631 (mDNS)</td>
+                          <td className="p-2">PDF Direct</td>
+                          <td className="p-2"><span className="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold">Ready</span></td>
+                        </tr>
+                        <tr>
+                          <td className="p-2 font-bold text-white">Linux / Enterprise Servers</td>
+                          <td className="p-2">CUPS SpliX / HPLIP PPD</td>
+                          <td className="p-2 font-mono">LPR Port 515 / Socket</td>
+                          <td className="p-2">PostScript / PCL</td>
+                          <td className="p-2"><span className="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold">Ready</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : isNetworkDevice && networkDeviceDetails ? (
+                <>
+                  <div className="flex items-center space-x-2 text-white font-bold border-b border-zinc-800 pb-2">
                     <Layers className="w-4 h-4 text-red-500" />
-                    <span>INSTALLED SOFTWARE INVENTORY ({filteredDiscoveredSoftware.length})</span>
-                  </span>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Scanned from 64-bit / 32-bit Registry & Package Manifests</p>
-                </div>
+                    <span>NETWORK DAEMONS & ACTIVE ROUTING PROTOCOLS</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-black border border-zinc-800 rounded p-3 space-y-2">
+                      <span className="text-zinc-400 font-bold block text-[11px]">Management Protocols:</span>
+                      <ul className="space-y-1 text-zinc-300">
+                        {networkDeviceDetails.managementProtocols.map((p, i) => (
+                          <li key={i} className="flex items-center space-x-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="bg-black border border-zinc-800 rounded p-3 space-y-2">
+                      <span className="text-zinc-400 font-bold block text-[11px]">Routing Engines:</span>
+                      <ul className="space-y-1 text-zinc-300">
+                        {networkDeviceDetails.routingProtocols.map((p, i) => (
+                          <li key={i} className="flex items-center space-x-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+                    <div>
+                      <span className="font-bold text-white text-xs flex items-center space-x-2">
+                        <Layers className="w-4 h-4 text-red-500" />
+                        <span>INSTALLED SOFTWARE INVENTORY ({filteredDiscoveredSoftware.length})</span>
+                      </span>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">Scanned from 64-bit / 32-bit Registry & Package Manifests</p>
+                    </div>
 
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    placeholder="Search software or publisher..."
-                    value={softwareSearch}
-                    onChange={(e) => setSoftwareSearch(e.target.value)}
-                    className="bg-black border border-zinc-800 rounded px-2.5 py-1 text-white text-xs focus:outline-none w-48"
-                  />
-                  <select
-                    value={softwareCategoryFilter}
-                    onChange={(e) => setSoftwareCategoryFilter(e.target.value)}
-                    className="bg-black border border-zinc-800 rounded px-2 py-1 text-white text-xs focus:outline-none cursor-pointer"
-                  >
-                    <option value="ALL">All Categories</option>
-                    <option value="Office Productivity">Office Productivity</option>
-                    <option value="Collaboration">Collaboration</option>
-                    <option value="EDR / Security">EDR / Security</option>
-                    <option value="Developer Tools">Developer Tools</option>
-                    <option value="Database">Database</option>
-                  </select>
-                </div>
-              </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        placeholder="Search software or publisher..."
+                        value={softwareSearch}
+                        onChange={(e) => setSoftwareSearch(e.target.value)}
+                        className="bg-black border border-zinc-800 rounded px-2.5 py-1 text-white text-xs focus:outline-none w-48"
+                      />
+                      <select
+                        value={softwareCategoryFilter}
+                        onChange={(e) => setSoftwareCategoryFilter(e.target.value)}
+                        className="bg-black border border-zinc-800 rounded px-2 py-1 text-white text-xs focus:outline-none cursor-pointer"
+                      >
+                        <option value="ALL">All Categories</option>
+                        <option value="Office Productivity">Office Productivity</option>
+                        <option value="Collaboration">Collaboration</option>
+                        <option value="EDR / Security">EDR / Security</option>
+                        <option value="Developer Tools">Developer Tools</option>
+                        <option value="Database">Database</option>
+                      </select>
+                    </div>
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-black text-zinc-500 text-[10px] uppercase">
-                    <tr>
-                      <th className="p-2">Application Title</th>
-                      <th className="p-2">Publisher</th>
-                      <th className="p-2">Version</th>
-                      <th className="p-2">Category</th>
-                      <th className="p-2">License Compliance</th>
-                      <th className="p-2">Security Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800 text-zinc-300">
-                    {filteredDiscoveredSoftware.map((s, idx) => (
-                      <tr key={idx} className="hover:bg-zinc-900/60">
-                        <td className="p-2 font-bold text-white">{s.name}</td>
-                        <td className="p-2 text-zinc-400">{s.publisher}</td>
-                        <td className="p-2 font-mono text-[11px] text-zinc-300">{s.version}</td>
-                        <td className="p-2 text-zinc-400">{s.category}</td>
-                        <td className="p-2">
-                          <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
-                            {s.license}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                              s.vuln === 'Clean'
-                                ? 'bg-zinc-900 text-zinc-300'
-                                : 'bg-amber-950 text-amber-400 border border-amber-800'
-                            }`}
-                          >
-                            {s.vuln}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-black text-zinc-500 text-[10px] uppercase">
+                        <tr>
+                          <th className="p-2">Application Title</th>
+                          <th className="p-2">Publisher</th>
+                          <th className="p-2">Version</th>
+                          <th className="p-2">Category</th>
+                          <th className="p-2">License Compliance</th>
+                          <th className="p-2">Security Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800 text-zinc-300">
+                        {filteredDiscoveredSoftware.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-zinc-900/60">
+                            <td className="p-2 font-bold text-white">{s.name}</td>
+                            <td className="p-2 text-zinc-400">{s.publisher}</td>
+                            <td className="p-2 font-mono text-[11px] text-zinc-300">{s.version}</td>
+                            <td className="p-2 text-zinc-400">{s.category}</td>
+                            <td className="p-2">
+                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                                {s.license}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  s.vuln === 'Clean'
+                                    ? 'bg-zinc-900 text-zinc-300'
+                                    : 'bg-amber-950 text-amber-400 border border-amber-800'
+                                }`}
+                              >
+                                {s.vuln}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

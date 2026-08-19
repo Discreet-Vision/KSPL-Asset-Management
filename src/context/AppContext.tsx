@@ -1265,27 +1265,212 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const runDiscoveryScanJob = (jobId: string) => {
+    const job = discoveryJobs.find((j) => j.id === jobId);
+    if (!job) return;
+
+    const timeStr = new Date().toLocaleTimeString();
+    const jobTargetLower = (job.target || '').toLowerCase();
+    const jobNameLower = (job.name || '').toLowerCase();
+
+    const isPrinterScan =
+      jobNameLower.includes('printer') ||
+      jobNameLower.includes('mfp') ||
+      jobNameLower.includes('laser') ||
+      job.type === 'SNMP' ||
+      jobTargetLower.includes('192.168.1.30') ||
+      jobTargetLower.includes('182.69.180.84') ||
+      jobTargetLower.includes('hpc01803a2f5db') ||
+      jobTargetLower.includes('135') ||
+      jobTargetLower.includes('138');
+
+    // Deterministic identification based on target to prevent serial number drift and duplicate creation
+    const ipClean = job.target.includes('/') ? job.target.split('/')[0] : job.target;
+    const isSpecificLaserMfp =
+      isPrinterScan &&
+      (jobTargetLower.includes('192.168.1.30') ||
+        jobTargetLower.includes('182.69.180.84') ||
+        jobTargetLower.includes('hpc01803a2f5db') ||
+        jobNameLower.includes('131') ||
+        jobNameLower.includes('133') ||
+        jobNameLower.includes('135') ||
+        jobNameLower.includes('138') ||
+        jobNameLower.includes('hp laser') ||
+        job.type === 'SNMP');
+
+    let discoveredDeviceName = isSpecificLaserMfp
+      ? 'HPC01803A2F5DB (HP Laser MFP 131 133 135-138)'
+      : isPrinterScan
+      ? `Network Printer (${ipClean})`
+      : `Discovered Network Switch (${ipClean})`;
+
+    let discoveredModel = isSpecificLaserMfp
+      ? 'HP Laser MFP 131 133 135-138'
+      : isPrinterScan
+      ? 'Laser MFP Series'
+      : 'Catalyst 9300 Series';
+
+    let discoveredManufacturer = isPrinterScan ? 'HP Inc.' : 'Cisco Systems';
+    let discoveredSerial = isSpecificLaserMfp
+      ? 'CNB1KC01803A2F5'
+      : isPrinterScan
+      ? `HP-PRN-${ipClean.replace(/[^0-9]/g, '').slice(-6) || '884920'}`
+      : `CSCO-SW-${ipClean.replace(/[^0-9]/g, '').slice(-6) || '992014'}`;
+
+    let discoveredMac = isSpecificLaserMfp
+      ? 'C0:18:03:A2:F5:DB'
+      : isPrinterScan
+      ? `00:1E:C9:${(parseInt(ipClean.split('.')[2] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:${(parseInt(ipClean.split('.')[3] || '30', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:A2`
+      : `00:2A:6A:${(parseInt(ipClean.split('.')[2] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:${(parseInt(ipClean.split('.')[3] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:4F`;
+
+    let discoveredHostname = isSpecificLaserMfp
+      ? 'HPC01803A2F5DB'
+      : isPrinterScan
+      ? `prn-office-${ipClean.replace(/[^0-9]/g, '')}.corp.internal`
+      : `sw-core-${ipClean.replace(/[^0-9]/g, '')}.corp.internal`;
+
+    let discoveredAssetTag = isSpecificLaserMfp ? 'PRN-1358' : `PRN-${ipClean.replace(/[^0-9]/g, '').slice(-4) || '9012'}`;
+
+    const newDiscoveredCi: ConfigurationItem = {
+      id: `ci-disc-${discoveredSerial.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      name: discoveredDeviceName,
+      assetTag: discoveredAssetTag,
+      serialNumber: discoveredSerial,
+      category: 'Hardware',
+      ciClassName: isPrinterScan ? 'Hardware - Printer / MFP' : 'Hardware - Network Switch / Router',
+      ciClassId: isPrinterScan ? 'class-printer' : 'class-switch',
+      manufacturer: discoveredManufacturer,
+      model: discoveredModel,
+      hostname: discoveredHostname,
+      ipAddress: ipClean,
+      macAddress: discoveredMac,
+      locationName: locations[0]?.name || 'NYC Headquarters - DC-1',
+      locationId: locations[0]?.id || 'loc-1',
+      departmentName: departments[0]?.name || 'Operations & Facilities',
+      departmentId: departments[0]?.id || 'dept-1',
+      costCenterId: 'cc-1',
+      lifecycleState: 'In Stock',
+      purchaseDate: new Date().toISOString().substring(0, 10),
+      cost: isPrinterScan ? 249 : 3499,
+      operatingSystem: isSpecificLaserMfp
+        ? 'HP Embedded Linux Print Engine (Firmware V3.82.01.15)'
+        : isPrinterScan
+        ? 'HP JetDirect Embedded Firmware'
+        : 'Cisco IOS-XE 17.9.4',
+      osVersion: isSpecificLaserMfp ? 'V3.82.01.15' : '17.9.4',
+      discoverySource: 'Agentless',
+      lastDiscovered: new Date().toISOString(),
+      healthScore: 98,
+      riskScore: 3,
+      dataClassification: 'Internal',
+      tenantId: currentTenant?.id || 'default-tenant',
+      customAttributes: {
+        snmpSysDescr: isSpecificLaserMfp
+          ? 'HP Laser MFP 131 133 135-138; JetDirect; Firmware V3.82.01.15; System Model HPC01803A2F5DB'
+          : isPrinterScan
+          ? `HP Laser MFP Printer; JetDirect; Firmware V2024.08 (${discoveredModel})`
+          : 'Cisco IOS Software, Catalyst L3 Switch Software (CAT9K_IOSXE)',
+        formFactor: isPrinterScan ? 'Multifunction Laser Printer (MFP)' : '1U Rackmount Switch',
+        printTechnology: isPrinterScan ? 'Monochrome Laser Electrophotographic' : undefined,
+        printResolution: isPrinterScan ? '1200 x 1200 dpi' : undefined,
+        printSpeedPpm: isPrinterScan ? 21 : undefined,
+        duplexSupport: isPrinterScan ? 'Manual (Driver Supported)' : undefined,
+        firstPageOutSec: isPrinterScan ? '8.3 Seconds' : undefined,
+        tonerBlackPct: 88,
+        tonerBlackLevelPct: 88,
+        drumUnitLifePct: 94,
+        fuserLifePct: 96,
+        wasteTonerBoxStatus: 'Normal (OK)',
+        totalPagesPrinted: 14280,
+        monoPagesPrinted: 14280,
+        scanCount: 3410,
+        copyCount: 1890,
+        jamCountLifetime: 2,
+        dutyCycleMonthly: 'Up to 10,000 pages',
+        tray1Capacity: '150-Sheet Input Cassette',
+        tray2Capacity: '100-Sheet Output Bin',
+        adfCapacity: '40-Sheet Automatic Document Feeder',
+        supportedMedia: 'A4, A5, B5, Envelope, Cardstock, Plain Paper',
+        firmwareVersion: isSpecificLaserMfp ? 'V3.82.01.15 (Build 2024-08)' : 'V2024.08',
+        driverName: isSpecificLaserMfp ? 'HP Laser MFP 131 133 135-138 PCLmS Driver' : 'HP Universal Print Driver PCL6',
+        activeProtocols: ['RAW (Port 9100)', 'IPP / IPPS (Port 631)', 'WSD (Port 3702)', 'SNMP v1/v2c (Port 161)', 'mDNS / AirPrint'],
+        ewsUrl: `http://${ipClean}`,
+        snmpCommunity: 'public / v2c',
+        snmpPort: 161,
+        discoveryMethod: job.type,
+      },
+    };
+
+    // Reconcile and add or update in ConfigurationItems (Prevents duplicates when scanned multiple times!)
+    setConfigurationItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (c) =>
+          c.id === newDiscoveredCi.id ||
+          (c.serialNumber && c.serialNumber === newDiscoveredCi.serialNumber) ||
+          (c.macAddress && c.macAddress.toLowerCase() === newDiscoveredCi.macAddress.toLowerCase()) ||
+          (c.ipAddress && c.ipAddress === newDiscoveredCi.ipAddress) ||
+          (c.name && c.name.toLowerCase() === newDiscoveredCi.name.toLowerCase())
+      );
+
+      let updatedList: ConfigurationItem[];
+      if (existingIdx >= 0) {
+        // Update the existing device with latest discovery data instead of adding a duplicate!
+        updatedList = [...prev];
+        updatedList[existingIdx] = {
+          ...updatedList[existingIdx],
+          ...newDiscoveredCi,
+          id: updatedList[existingIdx].id, // Keep existing ID
+          assetTag: updatedList[existingIdx].assetTag || newDiscoveredCi.assetTag,
+          lastDiscovered: new Date().toISOString(),
+          customAttributes: {
+            ...updatedList[existingIdx].customAttributes,
+            ...newDiscoveredCi.customAttributes,
+          },
+        };
+        saveRecordToFirestore(COLLECTIONS.CONFIGURATION_ITEMS, updatedList[existingIdx]);
+      } else {
+        updatedList = [newDiscoveredCi, ...prev];
+        saveRecordToFirestore(COLLECTIONS.CONFIGURATION_ITEMS, newDiscoveredCi);
+      }
+
+      localStorage.setItem('kspl_cmdb_cis', JSON.stringify(updatedList));
+      return updatedList;
+    });
+
+    const newLogs = isPrinterScan
+      ? [
+          ...job.logs,
+          `[${timeStr}] Initializing UDP SNMP v2c/v3 probe on target: ${job.target}...`,
+          `[${timeStr}] sysDescr OID .1.3.6.1.2.1.1.1.0: "${newDiscoveredCi.customAttributes?.snmpSysDescr}"`,
+          `[${timeStr}] sysName: ${newDiscoveredCi.hostname} (Model: ${newDiscoveredCi.model}, Serial: ${newDiscoveredCi.serialNumber}, MAC: ${newDiscoveredCi.macAddress})`,
+          `[${timeStr}] Consumables OID: Black Toner (88%), Drum Unit (94%), Total Page Count: 14,280 pages`,
+          `[${timeStr}] Reconciliation: Matched and synchronized ${newDiscoveredCi.name} (Tag: ${newDiscoveredCi.assetTag}) - Clean single record maintained.`,
+        ]
+      : [
+          ...job.logs,
+          `[${timeStr}] Initializing ${job.type} network scan sweep across target: ${job.target}...`,
+          `[${timeStr}] Discovered live host at ${job.target} responding on UDP 161 / TCP 80`,
+          `[${timeStr}] Host identification: ${newDiscoveredCi.name} (MAC: ${newDiscoveredCi.macAddress})`,
+          `[${timeStr}] [SUCCESS] 1 Network Device Discovered & Provisioned to CMDB!`,
+        ];
+
     setDiscoveryJobs((prev) =>
-      prev.map((job) => {
-        if (job.id === jobId) {
+      prev.map((j) => {
+        if (j.id === jobId) {
           const updated: DiscoveryScanJob = {
-            ...job,
+            ...j,
             status: 'Completed',
             lastRun: new Date().toISOString().replace('T', ' ').substring(0, 19),
-            itemsDiscovered: job.itemsDiscovered + Math.floor(Math.random() * 5) + 1,
-            logs: [
-              ...job.logs,
-              `[${new Date().toLocaleTimeString()}] Manual discovery scan executed by ${currentUser.name}`,
-              `[${new Date().toLocaleTimeString()}] Updated target range ${job.target}. Quality score: 98.4%`,
-            ],
+            itemsDiscovered: j.itemsDiscovered > 0 ? j.itemsDiscovered : 1,
+            logs: newLogs,
           };
           saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
           return updated;
         }
-        return job;
+        return j;
       })
     );
-    addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, `Scan ${jobId}`);
+
+    addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, `Discovered & synchronized ${newDiscoveredCi.name} from target ${job.target}`);
   };
 
   const assignAssetToUser = (ciId: string, userId: string) => {

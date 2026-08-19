@@ -996,7 +996,7 @@ app.post('/api/discovery/agent/simulate-telemetry', (req, res) => {
 });
 
 // 8. Downloadable Agent Collector Scripts
-app.get('/api/discovery/agent/scripts/windows', (req, res) => {
+const handleWindowsScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
     const token = typeof req.query.token === 'string' ? req.query.token : undefined;
@@ -1015,9 +1015,15 @@ app.get('/api/discovery/agent/scripts/windows', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     return res.send(`# ERROR: Failed to generate Windows discovery script: ${err?.message || String(err)}`);
   }
-});
+};
 
-app.get('/api/discovery/agent/scripts/linux', (req, res) => {
+app.get('/api/discovery/agent/scripts/windows', handleWindowsScript);
+app.get('/api/discovery/agent/scripts/windows.ps1', handleWindowsScript);
+app.get('/api/discovery/agent/scripts/win', handleWindowsScript);
+app.get('/kspl-discovery-agent.ps1', handleWindowsScript);
+app.get('/agent.ps1', handleWindowsScript);
+
+const handleLinuxScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
     const script = generateLinuxBashScript(host);
@@ -1029,9 +1035,14 @@ app.get('/api/discovery/agent/scripts/linux', (req, res) => {
   } catch (err: any) {
     res.status(500).setHeader('Content-Type', 'text/plain; charset=utf-8').send(`#!/usr/bin/env bash\n# ERROR: Failed to generate script`);
   }
-});
+};
 
-app.get('/api/discovery/agent/scripts/macos', (req, res) => {
+app.get('/api/discovery/agent/scripts/linux', handleLinuxScript);
+app.get('/api/discovery/agent/scripts/linux.sh', handleLinuxScript);
+app.get('/kspl-discovery-agent.sh', handleLinuxScript);
+app.get('/agent.sh', handleLinuxScript);
+
+const handleMacOsScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
     const script = generateMacOsScript(host);
@@ -1043,7 +1054,11 @@ app.get('/api/discovery/agent/scripts/macos', (req, res) => {
   } catch (err: any) {
     res.status(500).setHeader('Content-Type', 'text/plain; charset=utf-8').send(`#!/usr/bin/env bash\n# ERROR: Failed to generate script`);
   }
-});
+};
+
+app.get('/api/discovery/agent/scripts/macos', handleMacOsScript);
+app.get('/api/discovery/agent/scripts/macos.sh', handleMacOsScript);
+app.get('/kspl-discovery-agent-macos.sh', handleMacOsScript);
 
 app.get('/api/discovery/agent/scripts/ios', (req, res) => {
   try {
@@ -1053,6 +1068,18 @@ app.get('/api/discovery/agent/scripts/ios', (req, res) => {
     res.setHeader('Content-Type', 'application/x-apple-aspen-config; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="kspl-itam-enrollment.mobileconfig"');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.send(config);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to generate iOS mobile config' });
+  }
+});
+app.get('/api/discovery/agent/scripts/ios.mobileconfig', (req, res) => {
+  try {
+    const host = getServerBaseUrl(req);
+    const config = generateIosMobileConfig(host);
+    res.status(200);
+    res.setHeader('Content-Type', 'application/x-apple-aspen-config; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="kspl-itam-enrollment.mobileconfig"');
     return res.send(config);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to generate iOS mobile config' });
