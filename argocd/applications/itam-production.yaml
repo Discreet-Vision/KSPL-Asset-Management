@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: itam-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/enterprise-org/itam-saas.git'
+    targetRevision: HEAD
+    path: helm/itam
+    helm:
+      valueFiles:
+        - ../../gitops/environments/production/values.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: itam-production
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

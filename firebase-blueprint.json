@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "users": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "role": { "type": "string" },
+          "departmentId": { "type": "string" },
+          "locationId": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "mfaEnabled": { "type": "boolean" },
+          "mfaMethod": { "type": "string" },
+          "mfaSetupRequired": { "type": "boolean" },
+          "passwordHash": { "type": "string" },
+          "salt": { "type": "string" },
+          "status": { "type": "string" },
+          "createdAt": { "type": "string" }
+        },
+        "required": ["id", "email", "name", "role", "tenantId"]
+      },
+      "access_patterns": [
+        { "name": "get_user_by_id", "fields": ["id"] },
+        { "name": "get_user_by_email", "fields": ["email"] }
+      ]
+    },
+    "tenants": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "code": { "type": "string" },
+          "domain": { "type": "string" },
+          "status": { "type": "string" }
+        },
+        "required": ["id", "name"]
+      }
+    },
+    "mfa_secrets": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string" },
+          "secret": { "type": "string" },
+          "mfaEnabled": { "type": "boolean" },
+          "mfaMethod": { "type": "string" },
+          "recoveryCodes": { "type": "array", "items": { "type": "string" } },
+          "updatedAt": { "type": "string" }
+        }
+      }
+    },
+    "mfa_reset_requests": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "userId": { "type": "string" },
+          "userEmail": { "type": "string" },
+          "userName": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "reason": { "type": "string" },
+          "status": { "type": "string" },
+          "requestedAt": { "type": "string" }
+        }
+      }
+    },
+    "configuration_items": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "assetTag": { "type": "string" },
+          "ciClassId": { "type": "string" },
+          "status": { "type": "string" },
+          "tenantId": { "type": "string" }
+        }
+      }
+    },
+    "software_licenses": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "softwareName": { "type": "string" },
+          "licenseType": { "type": "string" },
+          "tenantId": { "type": "string" }
+        }
+      }
+    },
+    "itsm_tickets": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "ticketNumber": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string" },
+          "tenantId": { "type": "string" }
+        }
+      }
+    },
+    "audit_logs": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string" },
+          "action": { "type": "string" },
+          "entityType": { "type": "string" },
+          "tenantId": { "type": "string" }
+        }
+      }
+    }
+  }
+}

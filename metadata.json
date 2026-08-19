@@ -1,0 +1,6 @@
+{
+  "name": "KSPL ITAM — Enterprise ITAM & CMDB Platform",
+  "description": "Enterprise IT Asset Management (ITAM) & Configuration Management Database (CMDB) platform featuring typed CI relationship mapping, discovery reconciliation, software license compliance (ELP), financial depreciation, workflow automation, and AI Copilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,41 @@
+# Staging Environment Helm Values Configuration
+global:
+  environment: staging
+  tenantDefault: tenant-staging-kspl
+  cloudProvider: aws-eks
+
+frontend:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: "800m"
+      memory: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+
+backend:
+  replicaCount: 2
+
+copilot:
+  replicaCount: 2
+
+storage:
+  replicaCount: 2
+
+ingress:
+  className: "alb" # AWS ALB Ingress Controller
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  hosts:
+    - host: staging.itam.enterprise.com
+      paths:
+        - path: /*
+          pathType: ImplementationSpecific
+          serviceName: frontend
+          servicePort: 3000

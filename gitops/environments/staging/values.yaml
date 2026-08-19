@@ -1,0 +1,19 @@
+# GitOps Staging Environment Helm Values
+global:
+  environment: staging
+  cloudProvider: aws-eks
+
+image:
+  tag: "staging-2026.8"
+
+frontend:
+  replicaCount: 2
+
+backend:
+  replicaCount: 2
+
+copilot:
+  replicaCount: 2
+
+storage:
+  replicaCount: 2

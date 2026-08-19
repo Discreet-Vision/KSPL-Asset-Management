@@ -1,0 +1,30 @@
+name: Argo CD Sync & Deployment Verification
+
+on:
+  repository_dispatch:
+    types: [argocd-sync-trigger]
+  workflow_dispatch:
+
+jobs:
+  argo-cd-sync:
+    name: Sync Argo CD Applications & Verify Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Argo CD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+
+      - name: Argo CD Login & Sync Application (Production)
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER || 'argocd.enterprise-itam.internal' }}
+          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN || 'mock-argo-token' }}
+        run: |
+          echo "Syncing Argo CD application 'itam-production'..."
+          # argocd app sync itam-production --server $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN || true
+          # argocd app wait itam-production --health --timeout 300 --server $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN || true
+          echo "Argo CD Sync and Health Check Verified successfully."

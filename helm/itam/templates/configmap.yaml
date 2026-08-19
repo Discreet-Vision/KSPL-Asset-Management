@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-configmap
+  namespace: {{ .Release.Namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  GLOBAL_ENVIRONMENT: {{ .Values.global.environment | quote }}
+  DEFAULT_TENANT_ID: {{ .Values.global.tenantDefault | quote }}
+  POSTGRES_HOST: {{ .Values.postgresql.externalHost | quote }}
+  POSTGRES_PORT: {{ .Values.postgresql.externalPort | quote }}
+  POSTGRES_DB: {{ .Values.postgresql.databaseName | quote }}
+  REDIS_HOST: {{ .Values.redis.externalHost | quote }}
+  REDIS_PORT: {{ .Values.redis.externalPort | quote }}
+  STORAGE_PROVIDER: "s3"
+  S3_BUCKET: "enterprise-itam-attachments-vault"
+  S3_REGION: "us-east-1"

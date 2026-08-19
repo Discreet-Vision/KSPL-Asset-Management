@@ -1,0 +1,179 @@
+# Default values for Enterprise ITAM SaaS Helm Chart
+
+global:
+  environment: production
+  tenantDefault: tenant-kspl-global
+  cloudProvider: generic # options: aws-eks, azure-aks, google-gke, generic
+
+# Common Image Settings
+image:
+  repositoryPrefix: "registry.enterprise-itam.internal/itam"
+  pullPolicy: Always
+  tag: "2026.8.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "itam-service-account"
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Component Replica & Resource Definitions
+
+frontend:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "itam-frontend"
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+
+backend:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "itam-backend"
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+  env:
+    PORT: "8080"
+    NODE_ENV: "production"
+
+discovery:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "itam-discovery"
+    tag: "latest"
+  resources:
+    limits:
+      cpu: "1500m"
+      memory: "1500Mi"
+    requests:
+      cpu: "300m"
+      memory: "384Mi"
+
+copilot:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "itam-copilot"
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8083
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+storage:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "itam-storage"
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8084
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+
+# Database Configuration (External vs Managed)
+postgresql:
+  managedInternal: false
+  externalHost: "postgres.db.internal"
+  externalPort: 5432
+  databaseName: "itam_enterprise_db"
+  sslMode: "require"
+
+# Redis Cache & Queue
+redis:
+  managedInternal: false
+  externalHost: "redis.cache.internal"
+  externalPort: 6379
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: itam.enterprise.com
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 3000
+        - path: /api
+          pathType: Prefix
+          serviceName: backend
+          servicePort: 8080
+        - path: /api/v1/copilot
+          pathType: Prefix
+          serviceName: copilot
+          servicePort: 8083
+        - path: /object-storage
+          pathType: Prefix
+          serviceName: storage
+          servicePort: 8084
+  tls:
+    - secretName: itam-tls-cert
+      hosts:
+        - itam.enterprise.com
+
+# CronJobs
+scheduledJobs:
+  discoveryCron: "0 */6 * * *" # Every 6 hours
+  auditReadinessCron: "0 1 * * *" # Daily at 1 AM

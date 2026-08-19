@@ -1,0 +1,19 @@
+# GitOps Production Environment Helm Values
+global:
+  environment: production
+  cloudProvider: aws-eks
+
+image:
+  tag: "2026.8.0-prod"
+
+frontend:
+  replicaCount: 5
+
+backend:
+  replicaCount: 5
+
+copilot:
+  replicaCount: 3
+
+storage:
+  replicaCount: 3

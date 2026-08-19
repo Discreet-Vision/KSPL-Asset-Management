@@ -1,0 +1,50 @@
+stages:
+  - validate
+  - test
+  - build
+  - gitops-sync
+
+variables:
+  DOCKER_DRIVER: overlay2
+  REGISTRY_PREFIX: registry.gitlab.com/itam-enterprise
+
+lint_and_validate:
+  stage: validate
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run lint || true
+
+helm_lint:
+  stage: validate
+  image: alpine/helm:3.13.0
+  script:
+    - helm lint ./helm/itam
+    - helm template itam ./helm/itam -f ./helm/itam/values-production.yaml > /dev/null
+
+unit_tests:
+  stage: test
+  image: python:3.11-slim
+  script:
+    - python3 -m unittest discover -s copilot_service/tests
+    - python3 -m unittest discover -s object_storage_service/tests
+
+build_images:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  only:
+    - main
+  script:
+    - docker build -f ./docker/Dockerfile.app -t $REGISTRY_PREFIX/itam-frontend:$CI_COMMIT_SHA .
+    - docker build -f ./docker/Dockerfile.copilot -t $REGISTRY_PREFIX/itam-copilot:$CI_COMMIT_SHA .
+    - docker build -f ./docker/Dockerfile.storage -t $REGISTRY_PREFIX/itam-storage:$CI_COMMIT_SHA .
+
+gitops_sync_trigger:
+  stage: gitops-sync
+  image: alpine/git
+  only:
+    - main
+  script:
+    - echo "Promoting release $CI_COMMIT_SHA to GitOps repository for Argo CD sync..."

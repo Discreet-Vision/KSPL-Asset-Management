@@ -1,0 +1,37 @@
+{
+  "provider": "LaunchDarkly",
+  "fallbackStrategy": "SAFE_DEFAULT_OFF",
+  "environment": "production",
+  "flags": [
+    {
+      "key": "new_cmdb_dashboard",
+      "name": "New Interactive CMDB Graph Dashboard",
+      "enabled": true,
+      "type": "TenantTargeted",
+      "defaultValue": false,
+      "enabledTenants": ["tenant-kspl-global", "tenant-acme-corp"],
+      "enabledRoles": ["Admin", "ITAM Manager"],
+      "rolloutPercentage": 100
+    },
+    {
+      "key": "new_discovery_engine",
+      "name": "Agentless SNMPv3 & WMI High-Speed Scanner",
+      "enabled": true,
+      "type": "Percentage",
+      "defaultValue": false,
+      "enabledTenants": ["tenant-kspl-global"],
+      "enabledRoles": ["Admin", "IT Operator"],
+      "rolloutPercentage": 25
+    },
+    {
+      "key": "new_ai_copilot",
+      "name": "Claude 3.5 Sonnet Intelligent Asset Assistant",
+      "enabled": false,
+      "type": "Boolean",
+      "defaultValue": false,
+      "enabledTenants": [],
+      "enabledRoles": ["Admin"],
+      "rolloutPercentage": 0
+    }
+  ]
+}

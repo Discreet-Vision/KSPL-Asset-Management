@@ -1,0 +1,93 @@
+# Production High-Availability Multi-Region Helm Values Configuration
+global:
+  environment: production
+  tenantDefault: tenant-kspl-global
+  cloudProvider: aws-eks # or azure-aks, google-gke
+
+frontend:
+  replicaCount: 5
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 25
+    targetCPUUtilizationPercentage: 70
+
+backend:
+  replicaCount: 5
+  resources:
+    limits:
+      cpu: "4000m"
+      memory: "4Gi"
+    requests:
+      cpu: "1000m"
+      memory: "1Gi"
+
+copilot:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+
+storage:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+postgresql:
+  managedInternal: false
+  externalHost: "itam-prod-aurora-cluster.cluster-cz123.us-east-1.rds.amazonaws.com"
+  externalPort: 5432
+  databaseName: "itam_production_db"
+  sslMode: "verify-full"
+
+redis:
+  managedInternal: false
+  externalHost: "itam-prod-redis-cluster.cache.amazonaws.com"
+  externalPort: 6379
+
+ingress:
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+  hosts:
+    - host: app.enterprise-itam.com
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 3000
+        - path: /api
+          pathType: Prefix
+          serviceName: backend
+          servicePort: 8080
+        - path: /api/v1/copilot
+          pathType: Prefix
+          serviceName: copilot
+          servicePort: 8083
+        - path: /object-storage
+          pathType: Prefix
+          serviceName: storage
+          servicePort: 8084
+  tls:
+    - secretName: enterprise-itam-prod-tls
+      hosts:
+        - app.enterprise-itam.com

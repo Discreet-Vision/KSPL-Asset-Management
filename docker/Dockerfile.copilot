@@ -1,0 +1,13 @@
+# Production Dockerfile for ITAM Claude Copilot Service
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY copilot_service/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY copilot_service/ ./copilot_service/
+
+USER 10001
+EXPOSE 8083
+
+CMD ["uvicorn", "copilot_service.api.server:app", "--host", "0.0.0.0", "--port", "8083"]

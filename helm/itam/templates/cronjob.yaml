@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-discovery-cron
+  namespace: {{ .Release.Namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: itam-discovery-cron
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  schedule: {{ .Values.scheduledJobs.discoveryCron | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name | default "itam-service-account" }}
+          restartPolicy: OnFailure
+          containers:
+            - name: discovery-runner
+              image: "{{ .Values.image.repositoryPrefix }}/itam-discovery:{{ .Values.image.tag }}"
+              command: ["python3", "-m", "discovery_engine.cli", "--cron-scan"]
+              envFrom:
+                - configMapRef:
+                    name: {{ .Release.Name }}-configmap
+                - secretRef:
+                    name: {{ .Release.Name }}-secrets

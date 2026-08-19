@@ -1,0 +1,19 @@
+# GitOps Dev Environment Helm Values
+global:
+  environment: dev
+  cloudProvider: generic
+
+image:
+  tag: "dev-latest"
+
+frontend:
+  replicaCount: 1
+
+backend:
+  replicaCount: 1
+
+copilot:
+  replicaCount: 1
+
+storage:
+  replicaCount: 1

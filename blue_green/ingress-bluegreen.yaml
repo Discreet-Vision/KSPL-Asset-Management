@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: itam-bluegreen-ingress
+  namespace: itam-production
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # NGINX Canary / Traffic Splitting Annotations
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "10" # 10% traffic to Green, 90% to Blue
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Enterprise-Feature-Preview"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.enterprise-itam.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: itam-frontend-green
+                port:
+                  number: 3000
