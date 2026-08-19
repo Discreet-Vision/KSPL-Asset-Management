@@ -2,18 +2,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
 
 @theme {
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'Inter', sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'Inter', monospace;
 }
 
-/* Base typography */
 html, body, #root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-/* Prevent menu item text color from changing to white on hover */
-button:hover, a:hover, nav button:hover, aside button:hover {
-  color: inherit;
+  height: 100%;
+  width: 100%;
+  background-color: #000000;
+  color: #f4f4f5;
+  font-family: 'Inter', sans-serif;
 }
 
 /* Custom scrollbars */
@@ -22,22 +20,23 @@ button:hover, a:hover, nav button:hover, aside button:hover {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #09090b;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #27272a;
   border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
 
-/* Text selection styles - highlight selected text in blue */
+/* Text selection */
 ::selection {
-  background-color: #2563eb;
+  background-color: #dc2626;
   color: #ffffff;
 }
 
 ::-moz-selection {
-  background-color: #2563eb;
+  background-color: #dc2626;
   color: #ffffff;
 }
-
-
