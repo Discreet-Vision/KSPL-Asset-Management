@@ -6,13 +6,74 @@
   --font-mono: 'Inter', monospace;
 }
 
+:root {
+  /* KSPL monochrome palette — the sole visual color system. */
+  --kspl-paper: #fffef0;
+  --kspl-paper-muted: #f4f3e5;
+  --kspl-line: #d7d6c8;
+  --kspl-muted: #6b6b63;
+  --kspl-ink: #111111;
+}
+
 html, body, #root {
   height: 100%;
   width: 100%;
-  background-color: #000000;
-  color: #f4f4f5;
+  background-color: var(--kspl-paper);
+  color: var(--kspl-ink);
   font-family: 'Inter', sans-serif;
 }
+
+/*
+ * The product previously used Tailwind's full rainbow palette.  These selectors
+ * intentionally collapse every colored utility to the KSPL paper/ink/gray
+ * palette, including utilities composed with hover:, focus:, or dark: variants.
+ */
+:where(
+  [class*="bg-red-"], [class*="bg-orange-"], [class*="bg-amber-"], [class*="bg-yellow-"],
+  [class*="bg-lime-"], [class*="bg-green-"], [class*="bg-emerald-"], [class*="bg-teal-"],
+  [class*="bg-cyan-"], [class*="bg-sky-"], [class*="bg-blue-"], [class*="bg-indigo-"],
+  [class*="bg-violet-"], [class*="bg-purple-"], [class*="bg-fuchsia-"], [class*="bg-pink-"],
+  [class*="bg-rose-"], [class*="bg-slate-"], [class*="bg-zinc-"], [class*="bg-neutral-"],
+  [class*="bg-stone-"], [class*="bg-white"], [class*="bg-black"]
+) { background-color: var(--kspl-paper) !important; }
+
+:where(
+  [class*="text-red-"], [class*="text-orange-"], [class*="text-amber-"], [class*="text-yellow-"],
+  [class*="text-lime-"], [class*="text-green-"], [class*="text-emerald-"], [class*="text-teal-"],
+  [class*="text-cyan-"], [class*="text-sky-"], [class*="text-blue-"], [class*="text-indigo-"],
+  [class*="text-violet-"], [class*="text-purple-"], [class*="text-fuchsia-"], [class*="text-pink-"],
+  [class*="text-rose-"], [class*="text-slate-"], [class*="text-zinc-"], [class*="text-neutral-"],
+  [class*="text-stone-"], [class*="text-white"], [class*="text-black"]
+) { color: var(--kspl-ink) !important; }
+
+:where(
+  [class*="border-red-"], [class*="border-orange-"], [class*="border-amber-"], [class*="border-yellow-"],
+  [class*="border-lime-"], [class*="border-green-"], [class*="border-emerald-"], [class*="border-teal-"],
+  [class*="border-cyan-"], [class*="border-sky-"], [class*="border-blue-"], [class*="border-indigo-"],
+  [class*="border-violet-"], [class*="border-purple-"], [class*="border-fuchsia-"], [class*="border-pink-"],
+  [class*="border-rose-"], [class*="border-slate-"], [class*="border-zinc-"], [class*="border-neutral-"],
+  [class*="border-stone-"], [class*="border-white"], [class*="border-black"]
+) { border-color: var(--kspl-line) !important; }
+
+/* Remove color-bearing gradients, rings, and inline style values as well. */
+:where(
+  [class*="from-"], [class*="via-"], [class*="to-"],
+  [class*="ring-red"], [class*="ring-orange"], [class*="ring-amber"], [class*="ring-yellow"],
+  [class*="ring-green"], [class*="ring-emerald"], [class*="ring-teal"], [class*="ring-cyan"],
+  [class*="ring-blue"], [class*="ring-indigo"], [class*="ring-violet"], [class*="ring-purple"],
+  [class*="ring-pink"], [class*="ring-rose"]
+) { background-image: none !important; --tw-ring-color: var(--kspl-line) !important; }
+
+[style*="background"] {
+  background-color: var(--kspl-paper) !important;
+  background-image: none !important;
+}
+[style*="color"] { color: var(--kspl-ink) !important; }
+[style*="border"] { border-color: var(--kspl-line) !important; }
+
+/* Charts and icon fills can carry hard-coded colors; inherit the same ink. */
+svg [fill]:not([fill="none"]) { fill: currentColor !important; }
+svg [stroke]:not([stroke="none"]) { stroke: currentColor !important; }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
@@ -20,23 +81,23 @@ html, body, #root {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #09090b;
+  background: var(--kspl-paper-muted);
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--kspl-muted);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--kspl-ink);
 }
 
 /* Text selection */
 ::selection {
-  background-color: #dc2626;
-  color: #ffffff;
+  background-color: var(--kspl-ink);
+  color: var(--kspl-paper);
 }
 
 ::-moz-selection {
-  background-color: #dc2626;
-  color: #ffffff;
+  background-color: var(--kspl-ink);
+  color: var(--kspl-paper);
 }
