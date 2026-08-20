@@ -24,7 +24,7 @@ func NewInventoryEngine(cfg *config.AgentConfig) *InventoryEngine {
 func (e *InventoryEngine) GenerateFullSnapshot() (*schema.InventoryPayload, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		hostname = "ENDPOINT-HOST-UNKNOWN"
+		return nil, err
 	}
 
 	hw := CollectHardware()

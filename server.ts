@@ -949,9 +949,13 @@ app.post('/api/v1/assets/:id/discover', (req, res) => {
     if (!asset) {
       return res.status(404).json({ error: `Asset with ID ${id} not found.` });
     }
-    // Simulate real-time on-demand re-scan
-    asset.timestamp = new Date().toISOString();
-    res.json({ success: true, message: `Real-time discovery probe completed for ${asset.hostname}`, asset });
+    // The SaaS process must never pretend it can probe a client LAN.  A real
+    // rescan is queued for an enrolled endpoint agent or network scanner.
+    res.status(409).json({
+      error: 'ON_DEMAND_DISCOVERY_REQUIRES_COLLECTOR',
+      message: 'Queue this device through an enrolled endpoint agent or an enrolled in-network scanner.',
+      assetId: asset.id,
+    });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to trigger asset discovery scan', details: err?.message });
   }
@@ -970,10 +974,8 @@ app.get('/api/v1/assets/:id/raw-observations', (req, res) => {
       assetId: id,
       hostname: asset.hostname,
       rawAttributes: asset.rawAttributes || {},
-      softwareObservations: asset.installedSoftware || [],
-      networkInterfaces: [
-        { name: 'eth0 / en0', ip: asset.ipAddress, mac: asset.macAddress || '00:15:5D:82:11:4A', state: 'UP' }
-      ]
+      softwareObservations: asset.rawAttributes?.software || asset.installedSoftware || [],
+      networkInterfaces: asset.rawAttributes?.network || asset.rawAttributes?.network_interfaces || [],
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve raw asset observations', details: err?.message });

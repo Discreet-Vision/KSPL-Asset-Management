@@ -7,29 +7,29 @@ const SchemaVersion = "1.0.0"
 
 // HardwareInfo represents endpoint physical and virtual hardware specs.
 type HardwareInfo struct {
-	Manufacturer string `json:"manufacturer"`
-	Model        string `json:"model"`
-	SerialNumber string `json:"serial_number"`
-	SystemUUID   string `json:"system_uuid"`
-	BIOSVersion  string `json:"bios_version"`
-	CPUModel     string `json:"cpu_model"`
-	CPUCores     int    `json:"cpu_cores"`
-	CPUArch      string `json:"cpu_arch"`
-	RAMTotalBytes int64 `json:"ram_total_bytes"`
-	DiskTotalBytes int64 `json:"disk_total_bytes"`
-	GPUModel     string `json:"gpu_model"`
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+	SerialNumber string `json:"serial_number,omitempty"`
+	SystemUUID   string `json:"system_uuid,omitempty"`
+	BIOSVersion  string `json:"bios_version,omitempty"`
+	CPUModel     string `json:"cpu_model,omitempty"`
+	CPUCores     int    `json:"cpu_cores,omitempty"`
+	CPUArch      string `json:"cpu_arch,omitempty"`
+	RAMTotalBytes int64 `json:"ram_total_bytes,omitempty"`
+	DiskTotalBytes int64 `json:"disk_total_bytes,omitempty"`
+	GPUModel     string `json:"gpu_model,omitempty"`
 }
 
 // OSInfo represents operating system version and kernel telemetry.
 type OSInfo struct {
-	Name         string    `json:"name"`          // Windows, Linux, macOS
-	Version      string    `json:"version"`       // 11 Pro, 22.04 LTS, 14.5
-	Edition      string    `json:"edition"`       // Enterprise, Server, Desktop
-	BuildNumber  string    `json:"build_number"`
-	KernelVer    string    `json:"kernel_version"`
-	Architecture string    `json:"architecture"`  // x86_64, arm64
-	InstallDate  time.Time `json:"install_date"`
-	UptimeSec    int64     `json:"uptime_seconds"`
+	Name         string    `json:"name,omitempty"`          // Windows, Linux, macOS
+	Version      string    `json:"version,omitempty"`       // 11 Pro, 22.04 LTS, 14.5
+	Edition      string    `json:"edition,omitempty"`       // Enterprise, Server, Desktop
+	BuildNumber  string    `json:"build_number,omitempty"`
+	KernelVer    string    `json:"kernel_version,omitempty"`
+	Architecture string    `json:"architecture,omitempty"`  // x86_64, arm64
+	InstallDate  time.Time `json:"install_date,omitempty"`
+	UptimeSec    int64     `json:"uptime_seconds,omitempty"`
 }
 
 // SoftwareEntry represents an installed software application package.

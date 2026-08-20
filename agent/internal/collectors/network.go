@@ -1,25 +1,28 @@
 package collectors
 
-import "github.com/itam/discovery-agent/pkg/schema"
+import (
+	"net"
+	"strings"
+
+	"github.com/itam/discovery-agent/pkg/schema"
+)
 
 // CollectNetwork gathers active network interfaces, MAC addresses, and assigned IP addresses.
 func CollectNetwork() []schema.NetworkAdapter {
-	return []schema.NetworkAdapter{
-		{
-			Name:        "eth0 / en0 (Primary Ethernet)",
-			MACAddress:  "00:1A:2B:3C:4D:5E",
-			IPAddresses: []string{"10.240.12.84", "fe80::1a2b:3c4d:5e6f"},
-			SubnetMask:  "255.255.255.0",
-			IsVirtual:   false,
-			Status:      "UP",
-		},
-		{
-			Name:        "wlan0 / Wi-Fi",
-			MACAddress:  "00:1A:2B:3C:4D:5F",
-			IPAddresses: []string{"192.168.1.105"},
-			SubnetMask:  "255.255.255.0",
-			IsVirtual:   false,
-			Status:      "UP",
-		},
+	interfaces, err := net.Interfaces()
+	if err != nil { return nil }
+	result := make([]schema.NetworkAdapter, 0, len(interfaces))
+	for _, iface := range interfaces {
+		addresses, err := iface.Addrs(); if err != nil { continue }
+		ips := make([]string, 0, len(addresses)); mask := ""
+		for _, addr := range addresses {
+			ip, network, ok := net.ParseCIDR(addr.String()); if !ok || ip.IsLoopback() { continue }
+			ips = append(ips, ip.String()); if mask == "" && network != nil { mask = net.IP(network.Mask).String() }
+		}
+		if len(ips) == 0 && iface.HardwareAddr == nil { continue }
+		status := "DOWN"; if iface.Flags&net.FlagUp != 0 { status = "UP" }
+		name := strings.TrimSpace(iface.Name); if name == "" { continue }
+		result = append(result, schema.NetworkAdapter{Name: name, MACAddress: iface.HardwareAddr.String(), IPAddresses: ips, SubnetMask: mask, IsVirtual: iface.Flags&net.FlagLoopback != 0, Status: status})
 	}
+	return result
 }

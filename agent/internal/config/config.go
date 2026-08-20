@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"math/big"
+	"os"
 	"time"
 )
 
@@ -24,8 +25,10 @@ type AgentConfig struct {
 // DefaultConfig returns enterprise safe defaults.
 func DefaultConfig() *AgentConfig {
 	return &AgentConfig{
-		ServerURL:         "https://itam-server.internal/api/v1/agent",
-		TenantID:          "tenant-kspl-global",
+		ServerURL:         os.Getenv("ITAM_SERVER_URL"),
+		TenantID:          os.Getenv("ITAM_TENANT_ID"),
+		AgentID:           os.Getenv("ITAM_AGENT_ID"),
+		DeviceToken:       os.Getenv("ITAM_ENROLLMENT_TOKEN"),
 		UpdateChannel:     "stable",
 		InventoryInterval: 24 * time.Hour,
 		HeartbeatInterval: 5 * time.Minute,
