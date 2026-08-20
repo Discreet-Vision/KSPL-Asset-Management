@@ -64,7 +64,6 @@ import {
   executeAgentlessSweep,
   testAgentlessIp,
   ingestAgentHeartbeat,
-  simulateOsTelemetry,
   generateWindowsPowerShellScript,
   generateLinuxBashScript,
   generateMacOsScript,
@@ -74,7 +73,8 @@ import {
   getEndpointAgents,
   validateEnrollmentToken,
   issueEnrollmentToken,
-} from './src/backend/discoveryService';
+  ingestScannerResult,
+} from './src/backend/productionDiscoveryService';
 
 import {
   generateAiCiRelationshipSuggestions,
@@ -837,7 +837,7 @@ app.post('/api/cmdb/relationships/suggest-ai', async (req, res) => {
 // 1. Get Discovered Unified Asset Stream
 app.get('/api/discovery/results', (req, res) => {
   try {
-    const results = getDiscoveryResults();
+    const results = getDiscoveryResults(req.header('X-Tenant-ID'));
     res.json({ success: true, count: results.length, results });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch discovery results', details: err?.message });
@@ -847,7 +847,7 @@ app.get('/api/discovery/results', (req, res) => {
 // 2. Get Discovery Scan Jobs History
 app.get('/api/discovery/jobs', (req, res) => {
   try {
-    const jobs = getDiscoveryJobs();
+    const jobs = getDiscoveryJobs(req.header('X-Tenant-ID'));
     res.json({ success: true, count: jobs.length, jobs });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch discovery jobs', details: err?.message });
@@ -857,7 +857,7 @@ app.get('/api/discovery/jobs', (req, res) => {
 // 3. Get Registered Endpoint Agents
 app.get('/api/discovery/agents', (req, res) => {
   try {
-    const agents = getEndpointAgents();
+    const agents = getEndpointAgents(req.header('X-Tenant-ID'));
     res.json({ success: true, count: agents.length, agents });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch endpoint agents', details: err?.message });
@@ -867,7 +867,8 @@ app.get('/api/discovery/agents', (req, res) => {
 // 4. Trigger Agentless Network Sweep (SNMP, WMI/WinRM, SSH, Port Probing)
 app.post('/api/discovery/agentless/sweep', (req, res) => {
   try {
-    const { cidr, protocols, tenantId, credentialsRef } = req.body;
+    const { cidr, protocols, credentialsRef } = req.body;
+    const tenantId = req.header('X-Tenant-ID');
     if (!cidr) {
       return res.status(400).json({ error: 'Target CIDR or subnet range is required (e.g. 192.168.1.0/24)' });
     }
@@ -900,12 +901,14 @@ app.post('/api/discovery/agentless/test-ip', (req, res) => {
 app.post(['/api/discovery/agent/heartbeat', '/api/discovery/agent/register', '/api/v1/agent/ingest', '/api/discovery/agent/ingest'], (req, res) => {
   try {
     const payload = req.body;
-    if (!payload || !payload.hostname || !payload.osType) {
+    if (!payload || !payload.hostname || !(payload.osType || payload.os_type || payload.operating_system?.name)) {
       return res.status(400).json({
         error: 'Invalid agent payload. Required fields: hostname, osType (Windows | Linux | macOS | iOS), osName, osVersion, ipAddress.',
       });
     }
 
+    const token = req.header('X-Agent-Enrollment-Token') || req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+    if (!validateEnrollmentToken(token, payload.tenantId)) return res.status(401).json({ error: 'Invalid, expired, revoked, or cross-tenant enrollment token.' });
     const result = ingestAgentHeartbeat(payload);
     res.json(result);
   } catch (err: any) {
@@ -977,22 +980,14 @@ app.get('/api/v1/assets/:id/raw-observations', (req, res) => {
   }
 });
 
-// 7. Generate Real Simulated OS Telemetry (Windows, Linux, macOS, iOS) for Live In-Browser Testing
-app.post('/api/discovery/agent/simulate-telemetry', (req, res) => {
+// Scanner uploads only actual, scanner-collected observations. Raw data is retained in rawAttributes.
+app.post('/api/discovery/scans/:scanId/results', (req, res) => {
   try {
-    const { osType } = req.body;
-    const validOs = osType === 'Windows' || osType === 'Linux' || osType === 'macOS' || osType === 'iOS' ? osType : 'Windows';
-    const payload = simulateOsTelemetry(validOs);
-    const ingestResult = ingestAgentHeartbeat(payload);
-    res.json({
-      success: true,
-      simulatedOs: validOs,
-      payload,
-      ingestResult,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to generate OS simulation telemetry', details: err?.message });
-  }
+    const tenantId = req.header('X-Tenant-ID');
+    if (!tenantId) return res.status(401).json({ error: 'Tenant context is required.' });
+    const observation = ingestScannerResult(tenantId, req.params.scanId, req.body);
+    res.status(201).json({ success: true, observation });
+  } catch (err: any) { res.status(400).json({ error: err?.message || 'Result ingestion failed' }); }
 });
 
 // 8. Downloadable Agent Collector Scripts

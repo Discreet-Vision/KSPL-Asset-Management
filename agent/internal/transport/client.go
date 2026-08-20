@@ -46,7 +46,7 @@ func (c *AgentClient) SendInventoryPayload(payload *schema.InventoryPayload) err
 	var lastErr error
 
 	for attempt, delay := range backoffs {
-		req, err := http.NewRequest("POST", c.cfg.ServerURL+"/inventory", bytes.NewBuffer(data))
+			req, err := http.NewRequest("POST", c.cfg.ServerURL+"/api/discovery/agent/ingest", bytes.NewBuffer(data))
 		if err != nil {
 			return err
 		}
@@ -56,12 +56,13 @@ func (c *AgentClient) SendInventoryPayload(payload *schema.InventoryPayload) err
 		req.Header.Set("X-Tenant-ID", c.cfg.TenantID)
 		req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceToken)
 
-		// Simulate request execution
-		if c.cfg.ServerURL != "" {
-			return nil // Success
+		resp, requestErr := c.httpClient.Do(req)
+		if requestErr == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			_ = resp.Body.Close()
+			return nil
 		}
-
-		lastErr = fmt.Errorf("Attempt %d failed", attempt+1)
+		if resp != nil { _ = resp.Body.Close() }
+		if requestErr != nil { lastErr = requestErr } else { lastErr = fmt.Errorf("attempt %d received non-success response", attempt+1) }
 		time.Sleep(delay)
 	}
 
@@ -74,6 +75,15 @@ func (c *AgentClient) SendHeartbeat(hb *schema.AgentHeartbeat) error {
 	if err != nil {
 		return err
 	}
-	_ = data
+	req, err := http.NewRequest("POST", c.cfg.ServerURL+"/api/discovery/agent/heartbeat", bytes.NewBuffer(data))
+	if err != nil { return err }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Agent-ID", c.cfg.AgentID)
+	req.Header.Set("X-Tenant-ID", c.cfg.TenantID)
+	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceToken)
+	resp, err := c.httpClient.Do(req)
+	if resp != nil { _ = resp.Body.Close() }
+	if err != nil { return err }
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("heartbeat rejected with status %d", resp.StatusCode) }
 	return nil
 }

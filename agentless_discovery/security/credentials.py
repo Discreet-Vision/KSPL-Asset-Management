@@ -8,6 +8,8 @@ from agentless_discovery.config import AgentlessConfig
 
 class CredentialVault:
     def __init__(self, secret_key: str = AgentlessConfig.SECRET_KEY):
+        if not secret_key:
+            raise RuntimeError("AGENTLESS_SECRET_KEY must be configured before discovery credentials can be used")
         salt = b'itam_agentless_salt'
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),

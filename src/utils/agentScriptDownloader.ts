@@ -9,7 +9,7 @@ import {
   generateLinuxBashScript,
   generateMacOsScript,
   generateIosMobileConfig,
-} from '../backend/discoveryService';
+} from '../backend/productionDiscoveryService';
 
 export function getClientWindowsScript(serverUrl: string): string {
   return generateWindowsPowerShellScript(serverUrl);

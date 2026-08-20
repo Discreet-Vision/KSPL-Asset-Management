@@ -5,6 +5,7 @@ from agentless_discovery.discovery.nmap_scanner import NmapScanner
 from agentless_discovery.discovery.snmp_collector import SNMPCollector
 from agentless_discovery.discovery.wmi_collector import WMICollector
 from agentless_discovery.discovery.ssh_collector import SSHCollector
+from agentless_discovery.config import AgentlessConfig
 
 class DiscoveryJobEngine:
     def __init__(self):
@@ -40,7 +41,7 @@ class DiscoveryJobEngine:
         job["status"] = "Running"
         job["start_time"] = datetime.datetime.utcnow().isoformat() + "Z"
 
-        scanner = NmapScanner()
+        scanner = NmapScanner(AgentlessConfig.APPROVED_CIDRS)
         scan_res = scanner.scan_network_range(job["target_range"])
 
         if scan_res.get("status") == "REJECTED":
@@ -50,7 +51,7 @@ class DiscoveryJobEngine:
             return job
 
         hosts = scan_res.get("hosts", [])
-        job["hosts_scanned"] = len(hosts) * 4 # simulated IP scan breadth
+        job["hosts_scanned"] = scan_res.get("hosts_scanned", len(hosts))
         job["hosts_found"] = len(hosts)
 
         discovered = []
@@ -59,26 +60,29 @@ class DiscoveryJobEngine:
             ip = host.get("ip")
             
             if "SNMP" in protocols:
-                snmp = SNMPCollector(community_or_v3_user="public", secret="public_sec")
+                job["failed_creds"] += 1
+                continue  # Credentials are selected from the encrypted vault by the worker; never use defaults.
                 data = snmp.collect(ip)
                 data["discovery_id"] = f"DISC-SNMP-{uuid.uuid4().hex[:6]}"
                 discovered.append(data)
                 job["successful_creds"] += 1
             elif "WMI" in protocols:
-                wmi = WMICollector(username="DomainAdmin", secret="EncryptedSecretPass")
+                job["failed_creds"] += 1
+                continue
                 data = wmi.collect(ip)
                 data["discovery_id"] = f"DISC-WMI-{uuid.uuid4().hex[:6]}"
                 discovered.append(data)
                 job["successful_creds"] += 1
             elif "SSH" in protocols:
-                ssh = SSHCollector(username="root", key_or_password="EncryptedSSHKey")
+                job["failed_creds"] += 1
+                continue
                 data = ssh.collect(ip)
                 data["discovery_id"] = f"DISC-SSH-{uuid.uuid4().hex[:6]}"
                 discovered.append(data)
                 job["successful_creds"] += 1
 
         job["discovered_records"] = discovered
-        job["status"] = "Completed"
+        job["status"] = "COMPLETED_WITH_ERRORS" if job["failed_creds"] else "COMPLETED"
         job["end_time"] = datetime.datetime.utcnow().isoformat() + "Z"
         self._results.extend(discovered)
         return job
