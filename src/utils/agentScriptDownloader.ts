@@ -32,7 +32,7 @@ export function getClientIosConfig(serverUrl: string): string {
  */
 export function downloadAgentScript(osType: 'Windows' | 'Linux' | 'macOS' | 'iOS'): { success: boolean; filename: string } {
   try {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const origin = import.meta.env.VITE_ITAM_SERVER_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     let content = '';
     let filename = 'kspl-discovery-agent.sh';
     let mimeType = 'text/plain;charset=utf-8';

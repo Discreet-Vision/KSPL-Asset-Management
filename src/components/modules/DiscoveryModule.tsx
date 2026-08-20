@@ -92,16 +92,7 @@ export const DiscoveryModule: React.FC = () => {
     'jobs' | 'credentials' | 'agent' | 'cloud' | 'saas' | 'reconciliation' | 'normalization' | 'drift'
   >('jobs');
 
-  const [selectedJobLog, setSelectedJobLog] = useState<string[]>(
-    discoveryJobs[0]?.logs || [
-      '15:30:00 [INFO] Initializing WinRM / SSH Discovery Worker pool...',
-      '15:30:02 [INFO] Scanning subnet CIDR 192.168.10.0/24...',
-      '15:30:05 [OK] 192.168.10.12 - Dell Latitude 7440 discovered via WMI. Serial: DELL-98234-X1',
-      '15:30:08 [OK] 192.168.10.15 - Ubuntu 22.04 LTS Server discovered via SSH. Serial: SRV-UBUNTU-882',
-      '15:30:12 [INFO] Reconciliation Engine: 2 assets matched with 100% serial confidence.',
-      '15:30:15 [SUCCESS] Scan completed. 24 CIs updated, 0 duplicates created.',
-    ]
-  );
+  const [selectedJobLog, setSelectedJobLog] = useState<string[]>(discoveryJobs[0]?.logs || []);
 
   // Modals & State
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
@@ -114,16 +105,11 @@ export const DiscoveryModule: React.FC = () => {
   // New Scan Job Form State
   const [scanName, setScanName] = useState('');
   const [scanType, setScanType] = useState<any>('Subnet Range');
-  const [scanTarget, setScanTarget] = useState('10.20.0.0/23');
+  const [scanTarget, setScanTarget] = useState('');
   const [scanSchedule, setScanSchedule] = useState<any>('Hourly');
 
   // Credential State
-  const [credentialsList, setCredentialsList] = useState([
-    { id: 'cred-1', name: 'Domain Admin WinRM Credential', type: 'Windows WMI / WinRM', domain: 'CORP.INTERNAL', username: 'svc_itam_discovery', mask: '************', status: 'Valid' },
-    { id: 'cred-2', name: 'Linux Infrastructure SSH Key', type: 'Linux SSH Key', domain: 'N/A', username: 'itam-agent', mask: '************', status: 'Valid' },
-    { id: 'cred-3', name: 'Datacenter Core Switches SNMPv3', type: 'SNMP v3', domain: 'N/A', username: 'snmp_sec_usr', mask: '************', status: 'Valid' },
-    { id: 'cred-4', name: 'AWS Cloud ReadOnly Role', type: 'AWS IAM Role', domain: 'aws-prod-9823', username: 'arn:aws:iam::8823:role/ITAMDiscovery', mask: '************', status: 'Valid' },
-  ]);
+  const [credentialsList, setCredentialsList] = useState<any[]>([]);
   const [credName, setCredName] = useState('');
   const [credType, setCredType] = useState('Windows WMI / WinRM');
   const [credUsername, setCredUsername] = useState('');
@@ -133,44 +119,23 @@ export const DiscoveryModule: React.FC = () => {
   const [generatedToken, setGeneratedToken] = useState('');
 
   // Discovered Candidate Devices Review Queue
-  const [candidateDevices, setCandidateDevices] = useState([
-    { id: 'cand-1', hostname: 'DEV-WIN11-904', ip: '10.20.1.45', mac: '00:1A:2B:3C:4D:5E', serial: 'SN-WIN11-904', os: 'Windows 11 Pro 23H2', confidence: 98, source: 'WinRM' },
-    { id: 'cand-2', hostname: 'K8S-WORKER-04', ip: '10.20.4.12', mac: '52:54:00:12:34:56', serial: 'UUID-K8S-W04', os: 'Ubuntu 22.04 LTS', confidence: 95, source: 'SSH' },
-    { id: 'cand-3', hostname: 'PRN-FLOOR2-HP', ip: '10.20.2.88', mac: '00:11:0A:99:BB:CC', serial: 'HP-PRN-8821', os: 'HP JetDirect Firmware', confidence: 91, source: 'SNMP' },
-  ]);
+  const [candidateDevices, setCandidateDevices] = useState<any[]>([]);
 
   // Data Conflict Queue
-  const [conflicts, setConflicts] = useState([
-    {
-      id: 'conf-1',
-      ciName: 'LAP-CORP-8820 (MacBook Pro M3)',
-      field: 'Installed System Memory (RAM)',
-      sourceA: { name: 'Go Endpoint Agent', value: '32 GB DDR5', timestamp: '2026-08-11 15:10' },
-      sourceB: { name: 'Intune MDM Sync', value: '16 GB DDR5', timestamp: '2026-08-10 09:00' },
-      recommended: 'Go Endpoint Agent (Hardware Live Direct)',
-    },
-    {
-      id: 'conf-2',
-      ciName: 'SRV-DB-PROD-01 (PostgreSQL)',
-      field: 'Operating System Patch Version',
-      sourceA: { name: 'SSH Discovery', value: 'Kernel 6.2.0-39-generic', timestamp: '2026-08-11 14:00' },
-      sourceB: { name: 'AWS Cloud API', value: 'Ubuntu 22.04.3 LTS AMI', timestamp: '2026-08-11 12:00' },
-      recommended: 'SSH Discovery (Deep OS Execution)',
-    },
-  ]);
+  const [conflicts, setConflicts] = useState<any[]>([]);
 
   // Multi-OS Endpoint Agent State (Windows, Linux, macOS, iOS)
   const [selectedOsTab, setSelectedOsTab] = useState<'Windows' | 'Linux' | 'macOS' | 'iOS'>('Windows');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<any | null>(null);
-  const [singleIpTest, setSingleIpTest] = useState('10.20.4.15');
+  const [singleIpTest, setSingleIpTest] = useState('');
   const [isTestingIp, setIsTestingIp] = useState(false);
   // Get dynamic origin for copyable commands
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://itam.kubernesissecurity.com';
-  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $u="${appOrigin}/api/discovery/agent/scripts/windows"; try { iwr -useb $u | iex } catch { iwr -useb "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/windows" | iex }`;
+  const appOrigin = import.meta.env.VITE_ITAM_SERVER_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $u="${appOrigin}/api/discovery/agent/scripts/windows"; iwr -useb $u | iex`;
   const winFileCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; & "$HOME\\Downloads\\kspl-discovery-agent.ps1"`;
-  const linuxCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/linux" | sudo bash || curl -sSL "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/linux" | sudo bash`;
-  const macCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/macos" | sudo bash || curl -sSL "https://itam.kubernesissecurity.com/api/discovery/agent/scripts/macos" | sudo bash`;
+  const linuxCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/linux" | sudo bash`;
+  const macCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/macos" | sudo bash`;
   const iosCommand = `curl -X POST "${appOrigin}/api/discovery/agent/heartbeat" -H "Content-Type: application/json" -d '{"hostname":"Corp-iPhone-15Pro","osType":"iOS","osName":"Apple iOS","osVersion":"17.6.1","ipAddress":"10.20.6.99"}'`;
   const [ipTestResult, setIpTestResult] = useState<any | null>(null);
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
@@ -270,161 +235,14 @@ export const DiscoveryModule: React.FC = () => {
     setIsDetailModalOpen(true);
   };
 
-  const handleSimulateOs = async (osType: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
-    setIsSimulating(true);
-    setSimulationResult(null);
-
-    try {
-      const res = await fetch('/api/discovery/agent/simulate-telemetry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ osType }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setSimulationResult(data);
-
-        // Build full 204-attribute Hardware Asset and automatically provision into CMDB / Hardware Assets
-        const scanPayload = data.payload || {};
-        const newHwAsset = buildHardwareAssetFromScan(scanPayload, {
-          lifecycleState: 'In Stock',
-        });
-        
-        // Add to CMDB / Hardware Assets in AppContext
-        const provisioned = addConfigurationItem(newHwAsset);
-        setLastProvisionedCi(provisioned);
-
-        // Add to activeAgentsList immediately
-        const newAgentEntry = {
-          id: data.payload?.agentId || `ag-${Date.now()}`,
-          hostname: data.payload?.hostname || newHwAsset.name,
-          os: `${data.payload?.osName || newHwAsset.operatingSystem}`,
-          ipAddress: data.payload?.ipAddress || newHwAsset.ipAddress,
-          agentVersion: data.payload?.agentVersion || 'v2.5.0-native',
-          status: 'Healthy',
-          lastSeen: 'Just Now',
-          pendingQueuedEvents: 0,
-          cpu: data.payload?.cpuUsagePct || 14.5,
-          ram: data.payload?.memoryUsagePct || 42.0,
-          softwareCount: data.payload?.installedSoftware?.length || (newHwAsset.installedSoftware as any[])?.length || 18,
-          serialNumber: data.payload?.serialNumber || newHwAsset.serialNumber,
-          manufacturer: data.payload?.manufacturer || newHwAsset.manufacturer,
-          model: data.payload?.model || newHwAsset.model,
-          ciId: provisioned.id,
-          hardwareAsset: provisioned,
-        };
-        setActiveAgentsList((prev) => [newAgentEntry, ...prev.filter((a) => a.hostname !== newAgentEntry.hostname)]);
-
-        addAuditEntry('INGEST', 'EndpointAgent', data.payload?.agentId || osType, `Simulated agent telemetry ingested and provisioned in Hardware Assets with 204 attributes for ${osType}`);
-      } else {
-        throw new Error('API offline fallback');
-      }
-    } catch (e) {
-      // Offline fallback simulation with full 204 attributes
-      const randomSuffix = Math.floor(100 + Math.random() * 900);
-      const fallbackHost = osType === 'Windows' ? `DESKTOP-WIN11-${randomSuffix}` : osType === 'Linux' ? `srv-ubuntu-docker-${randomSuffix}` : osType === 'macOS' ? `MacBook-Pro-M3-${randomSuffix}.local` : `Corp-iPhone-15Pro-${randomSuffix}`;
-      const fallbackPayload = {
-        hostname: fallbackHost,
-        osType: osType,
-        osName: osType === 'Windows' ? 'Microsoft Windows 11 Enterprise (23H2)' : osType === 'Linux' ? 'Ubuntu Linux 24.04 LTS (Noble Numbat)' : osType === 'macOS' ? 'macOS Sonoma (Darwin 23.6.0)' : 'Apple iOS 17.6.1 (Managed)',
-        osVersion: osType === 'Windows' ? '10.0.22631.3880' : '23.6.0',
-        ipAddress: '192.168.1.' + Math.floor(Math.random() * 200 + 10),
-        serialNumber: `${osType === 'Windows' ? 'DELL-LATITUDE' : osType === 'Linux' ? 'HPE-PROLIANT' : 'APPLE-MAC'}-${randomSuffix}-X1`,
-        manufacturer: osType === 'Windows' ? 'Dell Inc.' : osType === 'Linux' ? 'HPE' : 'Apple Inc.',
-        model: osType === 'Windows' ? 'Latitude 7440 Ultrabook' : osType === 'Linux' ? 'ProLiant DL360 Gen10' : 'MacBook Pro 16"',
-        agentVersion: 'v2.5.0-native',
-        cpuModel: osType === 'Windows' ? '13th Gen Intel Core i7-1365U' : osType === 'Linux' ? 'Intel Xeon Silver 4314' : 'Apple M3 Max',
-        cpuCores: osType === 'Windows' ? 10 : osType === 'Linux' ? 32 : 16,
-        memoryTotalGb: osType === 'Windows' ? 32 : osType === 'Linux' ? 128 : 64,
-        diskTotalGb: osType === 'Windows' ? 512 : osType === 'Linux' ? 2048 : 1000,
-        installedSoftware: [
-          { name: 'Microsoft 365 Apps for enterprise', version: '16.0.17726.20160', publisher: 'Microsoft Corporation' },
-          { name: 'CrowdStrike Windows Sensor', version: '7.15.18402.0', publisher: 'CrowdStrike, Inc.' },
-          { name: 'Google Chrome Enterprise', version: '127.0.6533.100', publisher: 'Google LLC' },
-          { name: 'Zoom Workplace (64-bit)', version: '6.1.6.39824', publisher: 'Zoom Video Communications, Inc.' },
-          { name: 'Cisco Secure Client - AnyConnect VPN', version: '5.1.2.42', publisher: 'Cisco Systems, Inc.' },
-          { name: 'Microsoft Visual Studio Code', version: '1.92.0', publisher: 'Microsoft Corporation' },
-          { name: '7-Zip 24.07 (x64 edition)', version: '24.07', publisher: 'Igor Pavlov' },
-          { name: 'Adobe Acrobat Reader (64-bit)', version: '24.002.20965', publisher: 'Adobe Systems Incorporated' },
-        ],
-        cpuUsagePct: Math.floor(Math.random() * 30 + 10),
-        memoryUsagePct: Math.floor(Math.random() * 40 + 30),
-      };
-
-      const newHwAsset = buildHardwareAssetFromScan(fallbackPayload, {
-        lifecycleState: 'In Stock',
-      });
-      const provisioned = addConfigurationItem(newHwAsset);
-      setLastProvisionedCi(provisioned);
-
-      const fallbackData = {
-        success: true,
-        simulatedOs: osType,
-        payload: fallbackPayload,
-      };
-      setSimulationResult(fallbackData);
-      setActiveAgentsList((prev) => [
-        {
-          id: `ag-sim-${Date.now()}`,
-          hostname: fallbackData.payload.hostname,
-          os: fallbackData.payload.osName,
-          ipAddress: fallbackData.payload.ipAddress,
-          agentVersion: fallbackData.payload.agentVersion,
-          status: 'Healthy',
-          lastSeen: 'Just Now',
-          pendingQueuedEvents: 0,
-          cpu: fallbackData.payload.cpuUsagePct,
-          ram: fallbackData.payload.memoryUsagePct,
-          softwareCount: fallbackData.payload.installedSoftware.length,
-          serialNumber: fallbackData.payload.serialNumber,
-          manufacturer: fallbackData.payload.manufacturer,
-          model: fallbackData.payload.model,
-          ciId: provisioned.id,
-          hardwareAsset: provisioned,
-        },
-        ...prev,
-      ]);
-    } finally {
-      setIsSimulating(false);
-    }
+  // Demo inventory generation is intentionally disabled. Inventory enters only through an enrolled agent.
+  const handleSimulateOs = async (_osType: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
+    setSimulationResult({ error: 'Demo telemetry is disabled. Install and enroll a real endpoint agent.' });
   };
-
   const handleTestIpProbe = async () => {
     if (!singleIpTest) return;
-    setIsTestingIp(true);
-    setIpTestResult(null);
-
-    try {
-      const res = await fetch('/api/discovery/agentless/test-ip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: singleIpTest, protocols: ['WMI', 'SSH', 'SNMP'] }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIpTestResult(data);
-      } else {
-        throw new Error('API offline');
-      }
-    } catch (e) {
-      setIpTestResult({
-        ip: singleIpTest,
-        timestamp: new Date().toISOString(),
-        responsiveProtocols: ['SSH Port 22', 'WMI / WinRM (5985)'],
-        detectedOs: 'Linux / Windows Dual Stack Candidate',
-        confidenceScore: 92,
-        diagnostics: [
-          'TCP Handshake to 10.20.4.15:22 successful (1.2ms)',
-          'TCP Handshake to 10.20.4.15:5985 successful (2.8ms)',
-          'SNMPv3 response: sysDescr.0 OID accessible',
-        ],
-      });
-    } finally {
-      setIsTestingIp(false);
-    }
+    setIpTestResult({ error: 'Browser probes are disabled. Run this test from an enrolled scanner.' });
   };
-
   const handleCopyCommand = (cmd: string, label: string) => {
     navigator.clipboard?.writeText(cmd);
     setCopiedScript(label);
@@ -443,8 +261,7 @@ export const DiscoveryModule: React.FC = () => {
       schedule: scanSchedule,
     });
 
-    // Execute scan job immediately so discovered items update
-    runDiscoveryScanJob(newJob.id);
+    // A browser never executes a network scan. The enrolled scanner receives and runs the queued job.
 
     setIsNewScanModalOpen(false);
     setScanName('');
