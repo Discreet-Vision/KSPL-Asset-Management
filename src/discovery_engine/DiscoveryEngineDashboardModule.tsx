@@ -50,7 +50,7 @@ export const DiscoveryEngineDashboardModule: React.FC = () => {
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
 
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; iwr -useb "${appOrigin}/api/discovery/agent/scripts/windows" | iex`;
+  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; & "$HOME\\Downloads\\kspl-discovery-agent.ps1"`;
   const winFileCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; .\\kspl-discovery-agent.ps1`;
   const linuxCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/linux" | sudo bash`;
   const macCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/macos" | sudo bash`;
@@ -112,11 +112,13 @@ export const DiscoveryEngineDashboardModule: React.FC = () => {
     }
   };
 
-  const handleDownloadScript = (os: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
-    const res = downloadAgentScript(os);
+  const handleDownloadScript = async (os: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
+    const res = await downloadAgentScript(os);
     if (res.success) {
-      setSimMessage(`Downloaded '${res.filename}' successfully.`);
+      setSimMessage(`Downloaded and enrolled '${res.filename}'. Run it within 15 minutes.`);
       setTimeout(() => setSimMessage(null), 4000);
+    } else {
+      setSimMessage(res.error || 'Agent download failed.');
     }
   };
 

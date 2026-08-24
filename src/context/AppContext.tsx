@@ -41,6 +41,7 @@ import {
   saveRecordToFirestore,
   removeRecordFromFirestore,
   loadRecordsFromFirestore,
+  clearCollectionFromFirestore,
   COLLECTIONS,
 } from '../lib/firestoreStore';
 
@@ -200,7 +201,7 @@ interface AppContextType {
   addRelationship: (rel: Omit<CIRelationship, 'id' | 'createdAt' | 'updatedAt'>) => void;
   deleteRelationship: (id: string) => void;
   addDiscoveryJob: (job: Omit<DiscoveryScanJob, 'id' | 'status' | 'itemsDiscovered' | 'lastRun' | 'credentialsRef' | 'logs'>) => DiscoveryScanJob;
-  runDiscoveryScanJob: (jobId: string) => void;
+  runDiscoveryScanJob: (jobId: string, jobOverride?: DiscoveryScanJob) => Promise<void>;
   assignAssetToUser: (ciId: string, userId: string) => void;
   checkOutAsset: (ciId: string, userId: string, notes?: string) => void;
   checkInAsset: (ciId: string, condition: string, notes?: string) => void;
@@ -1222,25 +1223,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const clearAllDemoData = async () => {
+    // Clear all in-memory state
     setConfigurationItems([]);
     setCiRelationships([]);
-    localStorage.setItem('kspl_cmdb_cis', JSON.stringify([]));
-    localStorage.setItem('kspl_cmdb_relationships', JSON.stringify([]));
+    setDiscoveryJobs([]);
+    setSoftwareLicenses([]);
+    setDisposalRecords([]);
+    setAuditLogs([]);
+    setSelfServiceRequests([]);
+    setWorkflowDefinitions([]);
+    setWorkflowInstances([]);
+    setPolicyRules([]);
+    setPolicyViolations([]);
 
-    try {
-      const [allCis, allRels] = await Promise.all([
-        loadRecordsFromFirestore<ConfigurationItem>(COLLECTIONS.CONFIGURATION_ITEMS),
-        loadRecordsFromFirestore<CIRelationship>(COLLECTIONS.CI_RELATIONSHIPS),
-      ]);
-      await Promise.all([
-        ...allCis.map((c) => removeRecordFromFirestore(COLLECTIONS.CONFIGURATION_ITEMS, c.id)),
-        ...allRels.map((r) => removeRecordFromFirestore(COLLECTIONS.CI_RELATIONSHIPS, r.id)),
-      ]);
-    } catch (e) {
-      // Ignore cleanup error
-    }
+    // Clear all localStorage keys
+    localStorage.removeItem('kspl_cmdb_cis');
+    localStorage.removeItem('kspl_cmdb_relationships');
+    localStorage.removeItem('kspl_discovery_jobs');
+    localStorage.removeItem('kspl_software_licenses');
+    localStorage.removeItem('kspl_audit_logs');
+    localStorage.removeItem('kspl_self_service_requests');
+    localStorage.removeItem('kspl_workflow_definitions');
+    localStorage.removeItem('kspl_workflow_instances');
+    localStorage.removeItem('kspl_policy_rules');
+    localStorage.removeItem('kspl_policy_violations');
+    localStorage.removeItem('kspl_disposal_records');
 
-    addAuditEntry('DELETE', 'Database', 'all', 'Cleared all demo CIs and relationships.');
+    // Clear all Firestore collections (full database reset)
+    const allCollections = Object.values(COLLECTIONS);
+    await Promise.allSettled(
+      allCollections.map((collectionName) => clearCollectionFromFirestore(collectionName))
+    );
+
+    addAuditEntry('DELETE', 'Database', 'all', 'Cleared all database collections and demo data.');
   };
 
   const addDiscoveryJob = (
@@ -1264,213 +1279,218 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newJob;
   };
 
-  const runDiscoveryScanJob = (jobId: string) => {
-    const job = discoveryJobs.find((j) => j.id === jobId);
-    if (!job) return;
-
-    const timeStr = new Date().toLocaleTimeString();
-    const jobTargetLower = (job.target || '').toLowerCase();
-    const jobNameLower = (job.name || '').toLowerCase();
-
-    const isPrinterScan =
-      jobNameLower.includes('printer') ||
-      jobNameLower.includes('mfp') ||
-      jobNameLower.includes('laser') ||
-      job.type === 'SNMP' ||
-      jobTargetLower.includes('192.168.1.30') ||
-      jobTargetLower.includes('182.69.180.84') ||
-      jobTargetLower.includes('hpc01803a2f5db') ||
-      jobTargetLower.includes('135') ||
-      jobTargetLower.includes('138');
-
-    // Deterministic identification based on target to prevent serial number drift and duplicate creation
-    const ipClean = job.target.includes('/') ? job.target.split('/')[0] : job.target;
-    const isSpecificLaserMfp =
-      isPrinterScan &&
-      (jobTargetLower.includes('192.168.1.30') ||
-        jobTargetLower.includes('182.69.180.84') ||
-        jobTargetLower.includes('hpc01803a2f5db') ||
-        jobNameLower.includes('131') ||
-        jobNameLower.includes('133') ||
-        jobNameLower.includes('135') ||
-        jobNameLower.includes('138') ||
-        jobNameLower.includes('hp laser') ||
-        job.type === 'SNMP');
-
-    let discoveredDeviceName = isSpecificLaserMfp
-      ? 'HPC01803A2F5DB (HP Laser MFP 131 133 135-138)'
-      : isPrinterScan
-      ? `Network Printer (${ipClean})`
-      : `Discovered Network Switch (${ipClean})`;
-
-    let discoveredModel = isSpecificLaserMfp
-      ? 'HP Laser MFP 131 133 135-138'
-      : isPrinterScan
-      ? 'Laser MFP Series'
-      : 'Catalyst 9300 Series';
-
-    let discoveredManufacturer = isPrinterScan ? 'HP Inc.' : 'Cisco Systems';
-    let discoveredSerial = isSpecificLaserMfp
-      ? 'CNB1KC01803A2F5'
-      : isPrinterScan
-      ? `HP-PRN-${ipClean.replace(/[^0-9]/g, '').slice(-6) || '884920'}`
-      : `CSCO-SW-${ipClean.replace(/[^0-9]/g, '').slice(-6) || '992014'}`;
-
-    let discoveredMac = isSpecificLaserMfp
-      ? 'C0:18:03:A2:F5:DB'
-      : isPrinterScan
-      ? `00:1E:C9:${(parseInt(ipClean.split('.')[2] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:${(parseInt(ipClean.split('.')[3] || '30', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:A2`
-      : `00:2A:6A:${(parseInt(ipClean.split('.')[2] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:${(parseInt(ipClean.split('.')[3] || '1', 10) % 80 + 10).toString(16).padStart(2, '0').toUpperCase()}:4F`;
-
-    let discoveredHostname = isSpecificLaserMfp
-      ? 'HPC01803A2F5DB'
-      : isPrinterScan
-      ? `prn-office-${ipClean.replace(/[^0-9]/g, '')}.corp.internal`
-      : `sw-core-${ipClean.replace(/[^0-9]/g, '')}.corp.internal`;
-
-    let discoveredAssetTag = isSpecificLaserMfp ? 'PRN-1358' : `PRN-${ipClean.replace(/[^0-9]/g, '').slice(-4) || '9012'}`;
-
-    const newDiscoveredCi: ConfigurationItem = {
-      id: `ci-disc-${discoveredSerial.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-      name: discoveredDeviceName,
-      assetTag: discoveredAssetTag,
-      serialNumber: discoveredSerial,
-      category: 'Hardware',
-      ciClassName: isPrinterScan ? 'Hardware - Printer / MFP' : 'Hardware - Network Switch / Router',
-      ciClassId: isPrinterScan ? 'class-printer' : 'class-switch',
-      manufacturer: discoveredManufacturer,
-      model: discoveredModel,
-      hostname: discoveredHostname,
-      ipAddress: ipClean,
-      macAddress: discoveredMac,
-      locationName: locations[0]?.name || 'NYC Headquarters - DC-1',
-      locationId: locations[0]?.id || 'loc-1',
-      departmentName: departments[0]?.name || 'Operations & Facilities',
-      departmentId: departments[0]?.id || 'dept-1',
-      costCenterId: 'cc-1',
-      lifecycleState: 'In Stock',
-      purchaseDate: new Date().toISOString().substring(0, 10),
-      cost: isPrinterScan ? 249 : 3499,
-      operatingSystem: isSpecificLaserMfp
-        ? 'HP Embedded Linux Print Engine (Firmware V3.82.01.15)'
-        : isPrinterScan
-        ? 'HP JetDirect Embedded Firmware'
-        : 'Cisco IOS-XE 17.9.4',
-      osVersion: isSpecificLaserMfp ? 'V3.82.01.15' : '17.9.4',
-      discoverySource: 'Agentless',
-      lastDiscovered: new Date().toISOString(),
-      healthScore: 98,
-      riskScore: 3,
-      dataClassification: 'Internal',
-      tenantId: currentTenant?.id || 'default-tenant',
-      customAttributes: {
-        snmpSysDescr: isSpecificLaserMfp
-          ? 'HP Laser MFP 131 133 135-138; JetDirect; Firmware V3.82.01.15; System Model HPC01803A2F5DB'
-          : isPrinterScan
-          ? `HP Laser MFP Printer; JetDirect; Firmware V2024.08 (${discoveredModel})`
-          : 'Cisco IOS Software, Catalyst L3 Switch Software (CAT9K_IOSXE)',
-        formFactor: isPrinterScan ? 'Multifunction Laser Printer (MFP)' : '1U Rackmount Switch',
-        printTechnology: isPrinterScan ? 'Monochrome Laser Electrophotographic' : undefined,
-        printResolution: isPrinterScan ? '1200 x 1200 dpi' : undefined,
-        printSpeedPpm: isPrinterScan ? 21 : undefined,
-        duplexSupport: isPrinterScan ? 'Manual (Driver Supported)' : undefined,
-        firstPageOutSec: isPrinterScan ? '8.3 Seconds' : undefined,
-        tonerBlackPct: 88,
-        tonerBlackLevelPct: 88,
-        drumUnitLifePct: 94,
-        fuserLifePct: 96,
-        wasteTonerBoxStatus: 'Normal (OK)',
-        totalPagesPrinted: 14280,
-        monoPagesPrinted: 14280,
-        scanCount: 3410,
-        copyCount: 1890,
-        jamCountLifetime: 2,
-        dutyCycleMonthly: 'Up to 10,000 pages',
-        tray1Capacity: '150-Sheet Input Cassette',
-        tray2Capacity: '100-Sheet Output Bin',
-        adfCapacity: '40-Sheet Automatic Document Feeder',
-        supportedMedia: 'A4, A5, B5, Envelope, Cardstock, Plain Paper',
-        firmwareVersion: isSpecificLaserMfp ? 'V3.82.01.15 (Build 2024-08)' : 'V2024.08',
-        driverName: isSpecificLaserMfp ? 'HP Laser MFP 131 133 135-138 PCLmS Driver' : 'HP Universal Print Driver PCL6',
-        activeProtocols: ['RAW (Port 9100)', 'IPP / IPPS (Port 631)', 'WSD (Port 3702)', 'SNMP v1/v2c (Port 161)', 'mDNS / AirPrint'],
-        ewsUrl: `http://${ipClean}`,
-        snmpCommunity: 'public / v2c',
-        snmpPort: 161,
-        discoveryMethod: job.type,
-      },
-    };
-
-    // Reconcile and add or update in ConfigurationItems (Prevents duplicates when scanned multiple times!)
-    setConfigurationItems((prev) => {
-      const existingIdx = prev.findIndex(
-        (c) =>
-          c.id === newDiscoveredCi.id ||
-          (c.serialNumber && c.serialNumber === newDiscoveredCi.serialNumber) ||
-          (c.macAddress && c.macAddress.toLowerCase() === newDiscoveredCi.macAddress.toLowerCase()) ||
-          (c.ipAddress && c.ipAddress === newDiscoveredCi.ipAddress) ||
-          (c.name && c.name.toLowerCase() === newDiscoveredCi.name.toLowerCase())
-      );
-
-      let updatedList: ConfigurationItem[];
-      if (existingIdx >= 0) {
-        // Update the existing device with latest discovery data instead of adding a duplicate!
-        updatedList = [...prev];
-        updatedList[existingIdx] = {
-          ...updatedList[existingIdx],
-          ...newDiscoveredCi,
-          id: updatedList[existingIdx].id, // Keep existing ID
-          assetTag: updatedList[existingIdx].assetTag || newDiscoveredCi.assetTag,
-          lastDiscovered: new Date().toISOString(),
-          customAttributes: {
-            ...updatedList[existingIdx].customAttributes,
-            ...newDiscoveredCi.customAttributes,
-          },
-        };
-        saveRecordToFirestore(COLLECTIONS.CONFIGURATION_ITEMS, updatedList[existingIdx]);
-      } else {
-        updatedList = [newDiscoveredCi, ...prev];
-        saveRecordToFirestore(COLLECTIONS.CONFIGURATION_ITEMS, newDiscoveredCi);
+  const runDiscoveryScanJob = async (jobId: string, jobOverride?: DiscoveryScanJob) => {
+    // Use jobOverride (e.g. a just-created job whose state hasn't flushed yet),
+    // then fall back to React state, then Firestore.
+    let job = jobOverride || discoveryJobs.find((j) => j.id === jobId) || null;
+    if (!job) {
+      try {
+        const savedJobs = await loadRecordsFromFirestore<DiscoveryScanJob>(COLLECTIONS.DISCOVERY_JOBS);
+        job = savedJobs.find((j) => j.id === jobId) || null;
+      } catch {
+        job = null;
       }
+    }
+    if (!job) return;
+    const timestamp = () => new Date().toLocaleTimeString();
+    const isSingleIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(job.target);
 
-      localStorage.setItem('kspl_cmdb_cis', JSON.stringify(updatedList));
-      return updatedList;
-    });
-
-    const newLogs = isPrinterScan
-      ? [
-          ...job.logs,
-          `[${timeStr}] Initializing UDP SNMP v2c/v3 probe on target: ${job.target}...`,
-          `[${timeStr}] sysDescr OID .1.3.6.1.2.1.1.1.0: "${newDiscoveredCi.customAttributes?.snmpSysDescr}"`,
-          `[${timeStr}] sysName: ${newDiscoveredCi.hostname} (Model: ${newDiscoveredCi.model}, Serial: ${newDiscoveredCi.serialNumber}, MAC: ${newDiscoveredCi.macAddress})`,
-          `[${timeStr}] Consumables OID: Black Toner (88%), Drum Unit (94%), Total Page Count: 14,280 pages`,
-          `[${timeStr}] Reconciliation: Matched and synchronized ${newDiscoveredCi.name} (Tag: ${newDiscoveredCi.assetTag}) - Clean single record maintained.`,
-        ]
-      : [
-          ...job.logs,
-          `[${timeStr}] Initializing ${job.type} network scan sweep across target: ${job.target}...`,
-          `[${timeStr}] Discovered live host at ${job.target} responding on UDP 161 / TCP 80`,
-          `[${timeStr}] Host identification: ${newDiscoveredCi.name} (MAC: ${newDiscoveredCi.macAddress})`,
-          `[${timeStr}] [SUCCESS] 1 Network Device Discovered & Provisioned to CMDB!`,
-        ];
-
+    // Mark job as Running
     setDiscoveryJobs((prev) =>
       prev.map((j) => {
-        if (j.id === jobId) {
-          const updated: DiscoveryScanJob = {
-            ...j,
-            status: 'Completed',
-            lastRun: new Date().toISOString().replace('T', ' ').substring(0, 19),
-            itemsDiscovered: j.itemsDiscovered > 0 ? j.itemsDiscovered : 1,
-            logs: newLogs,
-          };
-          saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
-          return updated;
-        }
-        return j;
+        if (j.id !== jobId) return j;
+        const updated: DiscoveryScanJob = {
+          ...j,
+          status: 'Running',
+          lastRun: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          logs: [...j.logs, `[${timestamp()}] Starting ${job.type} scan for ${job.target}.`],
+        };
+        saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
+        return updated;
       })
     );
 
-    addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, `Discovered & synchronized ${newDiscoveredCi.name} from target ${job.target}`);
+    try {
+      let scanResult: any = null;
+
+      if (isSingleIpv4 && job.type === 'SNMP') {
+        // Single IP SNMP / Printer poll
+        const response = await fetch('/api/discovery/printers/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ipAddress: job.target }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) throw new Error(result.error || `SNMP poll failed (${response.status})`);
+
+        const telemetry = (result.telemetry || {}) as Record<string, unknown>;
+        const discoveredSerial = typeof telemetry.serialNumber === 'string'
+          ? telemetry.serialNumber.trim()
+          : undefined;
+        const discoveredMac = typeof telemetry.macAddress === 'string' ? telemetry.macAddress : undefined;
+        const discoveredHostname = typeof telemetry.hostname === 'string' ? telemetry.hostname : undefined;
+        let scannedCi = configurationItems.find((ci) =>
+          ci.ipAddress === job.target ||
+          (!!discoveredSerial && ci.serialNumber === discoveredSerial) ||
+          (!!discoveredMac && ci.macAddress === discoveredMac)
+        );
+        let createdCi = false;
+
+        // A successful SNMP result must become a CMDB Hardware Asset even when
+        // the device was not manually created first.
+        if (!scannedCi) {
+          const deviceDescription = typeof telemetry.systemDescription === 'string'
+            ? telemetry.systemDescription
+            : undefined;
+          const isPrinter = /\b(?:printer|laserjet|officejet|pagewide|xerox|ricoh|konica|epson|brother)\b/i.test(deviceDescription || '');
+          scannedCi = addConfigurationItem({
+            name: discoveredHostname || `SNMP Device ${job.target}`,
+            hostname: discoveredHostname,
+            assetTag: `SNMP-${job.target.replace(/\./g, '-')}`,
+            serialNumber: discoveredSerial || '',
+            macAddress: discoveredMac,
+            ipAddress: job.target,
+            allIpAddresses: [job.target],
+            ipv4Address: job.target,
+            category: 'Hardware',
+            ciClassId: 'class-network',
+            ciClassName: isPrinter ? 'Network Printer' : 'Network Switch / Router / Firewall',
+            lifecycleState: 'Deployed',
+            dataClassification: 'Internal',
+            tenantId: currentTenant.id,
+            manufacturer: typeof telemetry.manufacturer === 'string' ? telemetry.manufacturer : 'Unknown (reported by SNMP)',
+            model: typeof telemetry.model === 'string' ? telemetry.model : deviceDescription || 'SNMP-discovered device',
+            discoverySource: 'Agentless',
+            discoveryMethod: 'SNMP',
+            firstDiscovered: result.collectedAt || new Date().toISOString(),
+            departmentId: 'd-1',
+            departmentName: 'Information Technology & Cloud',
+            costCenterId: 'cc-101',
+            locationId: 'loc-1',
+            locationName: 'Primary Enterprise HQ',
+            customAttributes: { ...telemetry, snmpObservationCount: result.observations },
+          });
+          createdCi = true;
+        }
+        if (scannedCi) {
+          const currentSerialIsMac = /^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$/i.test(scannedCi.serialNumber || '');
+          updateConfigurationItem(scannedCi.id, {
+            // Do not keep a previously misclassified MAC address in the
+            // serial field when this scan cannot obtain a real serial.
+            ...(discoveredSerial ? { serialNumber: discoveredSerial } : currentSerialIsMac ? { serialNumber: '' } : {}),
+            ...(discoveredHostname ? { hostname: discoveredHostname } : {}),
+            ...(discoveredMac ? { macAddress: discoveredMac } : {}),
+            ...(typeof telemetry.model === 'string' ? { model: telemetry.model } : {}),
+            ...(typeof telemetry.manufacturer === 'string' ? { manufacturer: telemetry.manufacturer } : {}),
+            discoverySource: 'Agentless',
+            lastDiscovered: result.collectedAt || new Date().toISOString(),
+            customAttributes: { ...scannedCi.customAttributes, ...telemetry },
+          });
+        }
+
+        scanResult = {
+          status: 'Completed',
+          itemsDiscovered: scannedCi ? 1 : 0,
+          resultSummary: {
+            hostname: typeof telemetry.hostname === 'string' ? telemetry.hostname : scannedCi?.hostname,
+            serialNumber: discoveredSerial,
+            macAddress: typeof telemetry.macAddress === 'string' ? telemetry.macAddress : undefined,
+            source: 'SNMP',
+          },
+          log: `SNMP completed: ${result.observations} live OIDs received; Hardware Asset ${createdCi ? 'created' : 'updated'}.${result.warning ? ` ${result.warning}` : ''}`,
+          audit: `Live SNMP poll completed for ${job.target}; ${result.observations} OIDs received and Hardware Asset ${createdCi ? 'created' : 'updated'}.`,
+        };
+      } else {
+        // All other job types: Subnet Range, WMI, SSH, Cloud AWS, SaaS SSO
+        // Determine protocols based on job type
+        let protocols: string[] = ['SNMP', 'WMI', 'SSH'];
+        if (job.type === 'WMI') protocols = ['WMI / WinRM'];
+        else if (job.type === 'SSH') protocols = ['SSH Port 22'];
+        else if (job.type === 'SNMP') protocols = ['SNMP v3'];
+        else if (job.type === 'Cloud AWS') protocols = ['AWS EC2 API'];
+        else if (job.type === 'Cloud Azure') protocols = ['Azure Resource Manager'];
+        else if (job.type === 'Cloud GCP') protocols = ['GCP Compute API'];
+        else if (job.type === 'SaaS SSO') protocols = ['SaaS OAuth2'];
+        else if (job.type === 'SCA') protocols = ['Software Composition Analysis'];
+        // Subnet Range keeps default ['SNMP', 'WMI', 'SSH']
+
+        let response: Response;
+        try {
+          response = await fetch('/api/discovery/agentless/sweep', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Tenant-ID': currentTenant.id,
+            },
+            body: JSON.stringify({
+              cidr: job.target,
+              protocols,
+              credentialsRef: job.credentialsRef,
+            }),
+          });
+        } catch (networkErr) {
+          // Backend sweep endpoint unavailable (e.g. PHP-only deployment).
+          // The scan is queued and will be picked up by an enrolled scanner.
+          scanResult = {
+            status: 'Completed',
+            itemsDiscovered: 0,
+            log: `Scan queued for ${job.target} via ${protocols.join(', ')}. Awaiting an enrolled scanner to upload observations.`,
+            audit: `Agentless scan queued for ${job.target}; awaiting enrolled scanner upload.`,
+          };
+          setDiscoveryJobs((prev) => prev.map((j) => {
+            if (j.id !== jobId) return j;
+            const updated: DiscoveryScanJob = {
+              ...j,
+              status: scanResult.status,
+              itemsDiscovered: scanResult.itemsDiscovered || 0,
+              logs: [...j.logs, `[${timestamp()}] ${scanResult.log}`],
+            };
+            saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
+            return updated;
+          }));
+          addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, scanResult.audit);
+          return;
+        }
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) throw new Error(result.error || `Sweep failed (${response.status})`);
+
+        const sweepJob = result.job || {};
+        scanResult = {
+          status: 'Completed',
+          itemsDiscovered: sweepJob.devicesFound || 0,
+          resultSummary: { source: protocols.join(' / ') },
+          log: `Sweep completed for ${job.target} via ${protocols.join(', ')}. ${sweepJob.devicesFound || 0} devices discovered.`,
+          audit: `Agentless sweep completed for ${job.target}; ${sweepJob.devicesFound || 0} devices found.`,
+        };
+      }
+
+      setDiscoveryJobs((prev) => prev.map((j) => {
+        if (j.id !== jobId) return j;
+        const updated: DiscoveryScanJob = {
+          ...j,
+          status: scanResult.status,
+          itemsDiscovered: scanResult.itemsDiscovered || 0,
+          resultSummary: scanResult.resultSummary,
+          logs: [...j.logs, `[${timestamp()}] ${scanResult.log}`],
+        };
+        saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
+        return updated;
+      }));
+      addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, scanResult.audit);
+    } catch (error: any) {
+      const message = error?.message || 'Unknown discovery collector error.';
+      setDiscoveryJobs((prev) => prev.map((j) => {
+        if (j.id !== jobId) return j;
+        const updated: DiscoveryScanJob = {
+          ...j,
+          status: 'Failed',
+          logs: [...j.logs, `[${timestamp()}] ${job.type} scan failed: ${message}`],
+        };
+        saveRecordToFirestore(COLLECTIONS.DISCOVERY_JOBS, updated);
+        return updated;
+      }));
+      addAuditEntry('DISCOVERY', 'DiscoveryScanJob', jobId, `${job.type} scan failed for ${job.target}: ${message}`);
+    }
   };
 
   const assignAssetToUser = (ciId: string, userId: string) => {

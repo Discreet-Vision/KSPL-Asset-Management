@@ -3,6 +3,7 @@ import {
   getFirestoreDoc,
   getAllFirestoreDocs,
   deleteFirestoreDoc,
+  clearFirestoreCollection,
   seedInitialFirestoreCollection,
 } from './firebase';
 
@@ -163,4 +164,8 @@ export async function removeRecordFromFirestore(
 
 export async function loadRecordsFromFirestore<T>(collectionName: string): Promise<T[]> {
   return await getAllFirestoreDocs<T>(collectionName);
+}
+
+export async function clearCollectionFromFirestore(collectionName: string): Promise<void> {
+  await clearFirestoreCollection(collectionName);
 }

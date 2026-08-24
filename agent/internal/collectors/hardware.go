@@ -36,7 +36,7 @@ func CollectHardware() schema.HardwareInfo {
 		// CIM is available on supported Windows versions and does not expose secrets.
 		h.Manufacturer = powershell("(Get-CimInstance Win32_ComputerSystem).Manufacturer")
 		h.Model = powershell("(Get-CimInstance Win32_ComputerSystem).Model")
-		h.SerialNumber = powershell("(Get-CimInstance Win32_BIOS).SerialNumber")
+		h.SerialNumber = powershell("$bios=(Get-CimInstance Win32_BIOS).SerialNumber; $product=(Get-CimInstance Win32_ComputerSystemProduct).IdentifyingNumber; if ($bios -and $bios -notmatch '^(Default String|To Be Filled By O\\.E\\.M\\.|None|Unknown)$') { $bios } elseif ($product -and $product -notmatch '^(Default String|To Be Filled By O\\.E\\.M\\.|None|Unknown)$') { $product }")
 		h.SystemUUID = powershell("(Get-CimInstance Win32_ComputerSystemProduct).UUID")
 		h.BIOSVersion = powershell("(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion")
 		h.CPUModel = powershell("(Get-CimInstance Win32_Processor | Select-Object -First 1).Name")

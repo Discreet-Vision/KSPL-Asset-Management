@@ -183,7 +183,7 @@ export const CmdbModule: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              if (window.confirm('Are you sure you want to clear all demo data? This will remove all demo CIs and relationships from database storage.')) {
+              if (window.confirm('Are you sure you want to erase ALL data in the database? This permanently deletes every record from all Firestore collections (CIs, relationships, discovery jobs, licenses, contracts, logs, workflows, and more) and clears all browser storage.')) {
                 clearAllDemoData();
                 setSelectedCi(null);
               }

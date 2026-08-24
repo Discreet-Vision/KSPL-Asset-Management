@@ -586,7 +586,7 @@ export interface CIRelationship {
 export interface DiscoveryScanJob {
   id: string;
   name: string;
-  type: 'SNMP' | 'WMI' | 'SSH' | 'Subnet Range' | 'Cloud AWS' | 'Cloud Azure' | 'Cloud GCP' | 'SaaS SSO';
+  type: 'SNMP' | 'WMI' | 'SSH' | 'Subnet Range' | 'Cloud AWS' | 'Cloud Azure' | 'Cloud GCP' | 'SaaS SSO' | 'SCA';
   target: string;
   schedule: 'Manual' | 'Hourly' | 'Daily' | 'Weekly';
   status: 'Queued' | 'Running' | 'Completed' | 'Failed';
@@ -594,6 +594,13 @@ export interface DiscoveryScanJob {
   lastRun: string;
   credentialsRef: string;
   logs: string[];
+  /** Normalized identifiers returned by the most recent collector run. */
+  resultSummary?: {
+    hostname?: string;
+    serialNumber?: string;
+    macAddress?: string;
+    source?: string;
+  };
 }
 
 export interface EndpointAgent {

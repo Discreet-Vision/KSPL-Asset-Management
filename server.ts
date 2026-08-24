@@ -1,4 +1,5 @@
 import express from 'express';
+import os from 'node:os';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -102,11 +103,30 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 
 // Helper function to resolve public base URL from incoming requests and proxy headers
+function getLanIpv4Address(): string | undefined {
+  const candidates = Object.values(os.networkInterfaces()).flat().filter((entry): entry is os.NetworkInterfaceInfo =>
+    !!entry && entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')
+  );
+  // Prefer RFC1918 LAN ranges in the order typically used for office LANs.
+  return candidates.find((entry) => entry.address.startsWith('192.168.'))?.address
+    || candidates.find((entry) => entry.address.startsWith('10.'))?.address
+    || candidates.find((entry) => /^172\.(1[6-9]|2\d|3[01])\./.test(entry.address))?.address
+    || candidates[0]?.address;
+}
+
 function getServerBaseUrl(req: express.Request): string {
+  const configuredUrl = process.env.PUBLIC_SERVER_URL?.replace(/\/$/, '');
+  if (configuredUrl) return configuredUrl;
   const forwardedProto = req.headers['x-forwarded-proto'];
   const proto = (Array.isArray(forwardedProto) ? forwardedProto[0] : (forwardedProto || (req.secure ? 'https' : req.protocol) || 'https')).split(',')[0].trim();
   const forwardedHost = req.headers['x-forwarded-host'];
   const host = (Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost || req.get('host') || 'localhost:3000')).split(',')[0].trim();
+  // `localhost` is valid only on the server itself.  Downloaded collectors
+  // run on other endpoints, so use the server's detected LAN IP instead.
+  if (/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host)) {
+    const lanIp = getLanIpv4Address();
+    if (lanIp) return `${proto}://${lanIp}:${PORT}`;
+  }
   return `${proto}://${host}`;
 }
 
@@ -126,6 +146,7 @@ if (aiKey) {
 }
 
 import { checkMysqlHealth, initializeMysqlTables } from './src/database/mysql/mysqlDriver';
+import { pollPrinterSnmp } from './src/backend/snmpPrinterPoller';
 
 // Auto-initialize MySQL tables on boot if DB configured
 initializeMysqlTables()
@@ -992,12 +1013,32 @@ app.post('/api/discovery/scans/:scanId/results', (req, res) => {
   } catch (err: any) { res.status(400).json({ error: err?.message || 'Result ingestion failed' }); }
 });
 
+// Local SNMP printer polling. This route executes only the administrator's
+// configured scanner executable and returns observations actually received
+// from the requested printer; it never fabricates inventory.
+app.post('/api/discovery/printers/poll', async (req, res) => {
+  try {
+    const result = await pollPrinterSnmp(req.body?.ipAddress);
+    return res.json({ success: true, ...result, collectedAt: new Date().toISOString() });
+  } catch (err: any) {
+    return res.status(502).json({ success: false, error: err?.message || 'SNMP polling failed.' });
+  }
+});
+
+// Tokens are minted by the server so downloaded collectors cannot claim success with a browser-generated value.
+app.post('/api/discovery/agent/enrollment-tokens', (req, res) => {
+  const tenantId = String(req.body?.tenantId || req.header('X-Tenant-ID') || 'tenant-client-1');
+  const token = issueEnrollmentToken(tenantId);
+  res.status(201).json({ success: true, token, tenantId, expiresInSeconds: 900 });
+});
+
 // 8. Downloadable Agent Collector Scripts
 const handleWindowsScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
-    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
-    const script = generateWindowsPowerShellScript(host, token);
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : 'tenant-client-1';
+    const script = generateWindowsPowerShellScript(host, token, tenantId);
 
     res.status(200);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1023,7 +1064,9 @@ app.get('/agent.ps1', handleWindowsScript);
 const handleLinuxScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
-    const script = generateLinuxBashScript(host);
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : 'tenant-client-1';
+    const script = generateLinuxBashScript(host, token, tenantId);
     res.status(200);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="kspl-discovery-agent.sh"');
@@ -1042,7 +1085,9 @@ app.get('/agent.sh', handleLinuxScript);
 const handleMacOsScript = (req: any, res: any) => {
   try {
     const host = getServerBaseUrl(req);
-    const script = generateMacOsScript(host);
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : 'tenant-client-1';
+    const script = generateMacOsScript(host, token, tenantId);
     res.status(200);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="kspl-discovery-agent-macos.sh"');
@@ -1097,7 +1142,7 @@ app.get('/api/discovery/agent/test-validation', (req, res) => {
   const containsCorrectUrl = script.includes(host);
   const containsEnrollment = script.includes(token) || script.includes('X-Agent-Enrollment-Token');
   const containsStrictError = script.includes('ErrorActionPreference');
-  const containsRegistrationEndpoint = script.includes('/api/discovery/agent/register');
+  const containsRegistrationEndpoint = script.includes('/api/discovery/agent/heartbeat');
   const containsWmiQueries = script.includes('Win32_OperatingSystem') && script.includes('Win32_Processor');
 
   const allPassed = isPowerShellSyntax && containsCorrectUrl && containsEnrollment && containsStrictError && containsRegistrationEndpoint;

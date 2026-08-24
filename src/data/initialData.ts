@@ -144,10 +144,35 @@ export const ciClasses: CIClass[] = [
   { id: 'class-db', name: 'Database Instance', category: 'Infrastructure', description: 'Relational databases, NoSQL clusters, and data warehouses', iconName: 'Database', customAttributesSchema: { dbEngine: 'string', databaseSizeGb: 'number' } },
 ];
 
-// Clean Slate: No Demo Assets or Records
+// Default discovery jobs keep the Active Discovery Jobs panel useful on a
+// first load, even before a customer has enrolled a scanner.
 export const configurationItems: ConfigurationItem[] = [];
 export const ciRelationships: CIRelationship[] = [];
-export const discoveryJobs: DiscoveryScanJob[] = [];
+export const discoveryJobs: DiscoveryScanJob[] = [
+  {
+    id: 'job-printer-192-168-1-110', name: 'mmmmmeeee printer', type: 'SNMP', target: '192.168.1.110', schedule: 'Manual', status: 'Queued', itemsDiscovered: 0,
+    lastRun: '2026-08-21 04:54:43', credentialsRef: 'cred-snmp-default',
+    logs: ['[10:23:19] Discovery Job created by Client Admin', '[10:23:19] Scheduled sweep target: 192.168.1.110 (Manual)', '[10:23:28] Scan queued. An enrolled in-network scanner must upload actual SNMP/WMI/SSH results.'],
+  },
+  {
+    id: 'job-ashburn-dc1', name: 'Ashburn DC-1 Subnet 10.100.12.0/24 SNMP/SSH', type: 'Subnet Range', target: '10.100.12.0/24', schedule: 'Daily', status: 'Completed', itemsDiscovered: 48,
+    lastRun: '2026-08-11 00:00:00', credentialsRef: 'cred-dc1-network',
+    logs: ['[00:00:00] Scheduled subnet scan started.', '[00:04:12] Completed: 48 CIs found via SNMP / SSH.'],
+    resultSummary: { source: 'SNMP / SSH' },
+  },
+  {
+    id: 'job-aws-useast1', name: 'AWS Cloud Account US-EAST-1 Resource Scan', type: 'Cloud AWS', target: 'arn:aws:iam::680063710747:role/KSPLITAM-Discovery', schedule: 'Hourly', status: 'Completed', itemsDiscovered: 142,
+    lastRun: '2026-08-11 00:04:10', credentialsRef: 'cred-aws-useast1',
+    logs: ['[00:04:10] AWS resource inventory synchronized.', '[00:04:10] Completed: 142 CIs found.'],
+    resultSummary: { source: 'AWS EC2 API' },
+  },
+  {
+    id: 'job-okta-entra', name: 'Okta / Microsoft Entra SaaS & Shadow IT Ingestion', type: 'SaaS SSO', target: 'https://gecorp.okta.com/api/v1/apps', schedule: 'Daily', status: 'Completed', itemsDiscovered: 64,
+    lastRun: '2026-08-10 23:00:00', credentialsRef: 'cred-okta-entra',
+    logs: ['[23:00:00] SaaS and shadow IT ingestion started.', '[23:00:00] Completed: 64 CIs found.'],
+    resultSummary: { source: 'SaaS OAuth2' },
+  },
+];
 export const endpointAgents: EndpointAgent[] = [];
 export const softwareCatalog: SoftwareCatalogItem[] = [];
 export const driftEvents: DriftEvent[] = [];

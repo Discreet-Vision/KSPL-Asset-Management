@@ -185,6 +185,30 @@ export async function deleteFirestoreDoc(collectionName: string, docId: string):
   }
 }
 
+/**
+ * Delete every document in a Firestore collection (batch delete).
+ * Also clears the in-memory fallback cache for that collection.
+ */
+export async function clearFirestoreCollection(collectionName: string): Promise<void> {
+  try {
+    const colRef = collection(db, collectionName);
+    const snap = await getDocs(colRef);
+    const batch = writeBatch(db);
+    let count = 0;
+    snap.forEach((d) => {
+      batch.delete(doc(db, collectionName, d.id));
+      count++;
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+    // Drop in-memory fallback so no stale records survive
+    localMemoryFallback.delete(collectionName);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, collectionName);
+  }
+}
+
 export async function seedInitialFirestoreCollection<T extends { id: string }>(
   collectionName: string,
   initialDataArray: T[]

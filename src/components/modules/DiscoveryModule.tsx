@@ -1,15 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ConfigurationItem } from '../../types';
-import { buildHardwareAssetFromScan } from '../../utils/hardwareAttributesMapper';
 import { HardwareAssetDetailModal } from '../common/HardwareAssetDetailModal';
 import { AddHardwareAssetModal } from '../common/AddHardwareAssetModal';
-import {
-  downloadAgentScript,
-  getClientWindowsScript,
-  getClientLinuxScript,
-  getClientMacOsScript,
-} from '../../utils/agentScriptDownloader';
+import { downloadAgentScript } from '../../utils/agentScriptDownloader';
 import {
   Radar,
   Play,
@@ -63,6 +57,7 @@ export const DiscoveryModule: React.FC = () => {
     driftEvents,
     configurationItems,
     ciRelationships,
+    currentTenant,
     addAuditEntry,
     addConfigurationItem,
     setActiveModule,
@@ -131,8 +126,8 @@ export const DiscoveryModule: React.FC = () => {
   const [singleIpTest, setSingleIpTest] = useState('');
   const [isTestingIp, setIsTestingIp] = useState(false);
   // Get dynamic origin for copyable commands
-  const appOrigin = import.meta.env.VITE_ITAM_SERVER_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $u="${appOrigin}/api/discovery/agent/scripts/windows"; iwr -useb $u | iex`;
+  const appOrigin = (import.meta as any).env?.VITE_ITAM_SERVER_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  const winDirectCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; & "$HOME\\Downloads\\kspl-discovery-agent.ps1"`;
   const winFileCommand = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; & "$HOME\\Downloads\\kspl-discovery-agent.ps1"`;
   const linuxCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/linux" | sudo bash`;
   const macCommand = `curl -sSL "${appOrigin}/api/discovery/agent/scripts/macos" | sudo bash`;
@@ -153,28 +148,13 @@ export const DiscoveryModule: React.FC = () => {
   const safeCis = configurationItems || [];
   const safeSelectedJobLog = selectedJobLog || [];
 
-  const handleCopyRawScript = (osType: 'Windows' | 'Linux' | 'macOS') => {
-    let scriptText = '';
-    if (osType === 'Windows') {
-      scriptText = getClientWindowsScript(appOrigin);
-    } else if (osType === 'Linux') {
-      scriptText = getClientLinuxScript(appOrigin);
-    } else {
-      scriptText = getClientMacOsScript(appOrigin);
-    }
-    navigator.clipboard?.writeText(scriptText);
-    setCopiedScript(`raw_${osType.toLowerCase()}`);
-    setDownloadSuccessToast(`Copied full ${osType} script code to clipboard! You can now paste directly into PowerShell/Terminal.`);
-    setTimeout(() => {
-      setCopiedScript(null);
-      setDownloadSuccessToast(null);
-    }, 4000);
-  };
-
-  const handleDownloadScript = (osType: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
-    const res = downloadAgentScript(osType);
+  const handleDownloadScript = async (osType: 'Windows' | 'Linux' | 'macOS' | 'iOS') => {
+    const res = await downloadAgentScript(osType);
     if (res.success) {
-      setDownloadSuccessToast(`Downloaded agent script '${res.filename}' successfully.`);
+      setDownloadSuccessToast(`Downloaded and enrolled '${res.filename}'. Run it within 15 minutes to submit the real inventory.`);
+      setTimeout(() => setDownloadSuccessToast(null), 4000);
+    } else {
+      setDownloadSuccessToast(res.error || 'Agent download failed.');
       setTimeout(() => setDownloadSuccessToast(null), 4000);
     }
   };
@@ -185,6 +165,22 @@ export const DiscoveryModule: React.FC = () => {
       setActiveAgentsList(endpointAgents);
     }
   }, [endpointAgents]);
+
+  // Endpoint agents run outside the browser. Load their real heartbeats from
+  // the receiver instead of relying on local demo state.
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadAgents = async () => {
+      try {
+        const response = await fetch('/api/discovery/agents', { headers: { 'X-Tenant-ID': currentTenant.id } });
+        const body = await response.json();
+        if (!cancelled && response.ok && Array.isArray(body.agents)) setActiveAgentsList(body.agents);
+      } catch { /* Keep the last known agent list during an offline refresh. */ }
+    };
+    void loadAgents();
+    const timer = window.setInterval(() => void loadAgents(), 15000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [currentTenant.id]);
 
   const handleOpenAgentAssetModal = (ag: any, initialTab: 'overview' | 'attributes204' = 'overview') => {
     // 1. Try finding existing CI in configurationItems by id, serial, hostname, or ip
@@ -199,35 +195,30 @@ export const DiscoveryModule: React.FC = () => {
 
     // 2. If not yet in configurationItems, build full 204-attribute asset from agent telemetry
     if (!targetCi) {
-      const isMac = ag.os?.includes('Mac') || ag.os?.includes('Darwin') || ag.os?.includes('macOS');
-      const isLinux = ag.os?.includes('Ubuntu') || ag.os?.includes('Linux') || ag.os?.includes('RHEL');
-      const isIos = ag.os?.includes('iOS') || ag.os?.includes('iPhone');
+      const reportedOs = ag.osType || ag.os || ag.osName || '';
+      const isMac = reportedOs.includes('Mac') || reportedOs.includes('Darwin') || reportedOs.includes('macOS');
+      const isLinux = reportedOs.includes('Ubuntu') || reportedOs.includes('Linux') || reportedOs.includes('RHEL');
+      const isIos = reportedOs.includes('iOS') || reportedOs.includes('iPhone');
       const osFamily = isMac ? 'macOS' : isLinux ? 'Linux' : isIos ? 'iOS' : 'Windows';
 
-      targetCi = buildHardwareAssetFromScan(
-        {
-          hostname: ag.hostname,
-          osType: osFamily as any,
-          osName: ag.os || `${osFamily} Enterprise Edition`,
-          osVersion: ag.osVersion || (isMac ? 'Sonoma 14.6.1' : isLinux ? '24.04 LTS' : '10.0.22631'),
-          ipAddress: ag.ipAddress || '192.168.1.50',
-          serialNumber: ag.serialNumber || `SN-${ag.hostname}`,
-          manufacturer: ag.manufacturer || (isMac || isIos ? 'Apple Inc.' : isLinux ? 'HPE' : 'Dell Inc.'),
-          model: ag.model || (isMac ? 'MacBook Pro 16"' : isIos ? 'iPhone 15 Pro' : isLinux ? 'ProLiant DL360 Gen10' : 'Latitude 7440 Ultrabook'),
-          agentVersion: ag.agentVersion || 'v2.5.0',
-          cpuCores: ag.cpuCores || (isLinux ? 32 : 10),
-          memoryTotalGb: ag.memoryTotalGb || (isLinux ? 128 : 32),
-          diskTotalGb: ag.diskTotalGb || (isLinux ? 2048 : 512),
-          installedSoftware: ag.installedSoftware,
-        },
-        {
-          lifecycleState: 'In Stock',
-        }
-      );
-
-      // Register into configurationItems store so it is saved
-      const savedCi = addConfigurationItem(targetCi);
-      targetCi = savedCi;
+      targetCi = addConfigurationItem({
+        name: ag.hostname,
+        hostname: ag.hostname,
+        assetTag: `AGENT-${String(ag.agentId || ag.hostname).replace(/[^A-Za-z0-9]/g, '-').slice(0, 48)}`,
+        serialNumber: ag.serialNumber || '', macAddress: ag.macAddress, ipAddress: ag.ipAddress,
+        allIpAddresses: ag.ipAddress ? [ag.ipAddress] : [], ipv4Address: ag.ipAddress,
+        category: 'Hardware', ciClassId: isLinux ? 'class-server' : 'class-laptop',
+        ciClassName: isLinux ? 'Physical / Virtual Server' : 'Laptop / Workstation',
+        lifecycleState: 'Deployed', dataClassification: 'Internal', tenantId: currentTenant.id,
+        manufacturer: ag.manufacturer || 'Not reported', model: ag.model || 'Not reported',
+        operatingSystem: ag.osName || reportedOs, osName: ag.osName || reportedOs, osVersion: ag.osVersion,
+        cpuModel: ag.cpuModel, cpuCoreCount: ag.cpuCores, totalRamGb: ag.memoryTotalGb,
+        totalStorageGb: ag.diskTotalGb, installedSoftware: ag.installedSoftware,
+        installedSoftwareCount: ag.installedSoftwareCount,
+        discoverySource: 'Agent', discoveryMethod: 'Endpoint Agent', firstDiscovered: ag.lastHeartbeat,
+        departmentId: 'd-1', departmentName: 'Information Technology & Cloud', costCenterId: 'cc-101', locationId: 'loc-1', locationName: 'Primary Enterprise HQ',
+        customAttributes: ag.rawAttributes || ag,
+      });
     }
 
     setSelectedAssetForDetail(targetCi);
@@ -261,7 +252,10 @@ export const DiscoveryModule: React.FC = () => {
       schedule: scanSchedule,
     });
 
-    // A browser never executes a network scan. The enrolled scanner receives and runs the queued job.
+    // Automatically execute the scan through the server-side discovery engine
+    // so the job progresses: Queued → Running → Completed / Failed.
+    // Pass the created job as an override to avoid state-flush race conditions.
+    runDiscoveryScanJob(newJob.id, newJob);
 
     setIsNewScanModalOpen(false);
     setScanName('');
@@ -291,10 +285,18 @@ export const DiscoveryModule: React.FC = () => {
     addAuditEntry('CREATE', 'DiscoveryCredential', `cred-${Date.now()}`, `Created encrypted credential: ${credName}`);
   };
 
-  const handleGenerateToken = () => {
-    const newToken = `ITAM-ENROLL-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Date.now().toString().slice(-4)}`;
-    setGeneratedToken(newToken);
-    setIsTokenModalOpen(true);
+  const handleGenerateToken = async () => {
+    try {
+      const response = await fetch(`${appOrigin}/api/discovery/agent/enrollment-tokens`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: 'tenant-client-1' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.token) throw new Error(result.error || 'Token generation failed.');
+      setGeneratedToken(result.token);
+      setIsTokenModalOpen(true);
+    } catch (error: any) {
+      setDownloadSuccessToast(error?.message || 'Could not generate an enrollment token.');
+    }
   };
 
   const handleApproveCandidate = (candId: string) => {
@@ -486,6 +488,13 @@ export const DiscoveryModule: React.FC = () => {
                       <div className="text-zinc-400 text-[11px]">
                         Target Range: <span className="text-white">{job.target}</span> | Schedule: <span className="text-red-400">{job.schedule}</span> | Last Run: {job.lastRun}
                       </div>
+                      <div className="mt-2 rounded border border-zinc-800 bg-black/60 px-2 py-1.5 text-[10px] text-zinc-400 flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="uppercase text-zinc-500 font-bold">Latest scan data</span>
+                        <span>Source: <strong className="text-zinc-200">{job.resultSummary?.source || job.type}</strong></span>
+                        <span>Serial: <strong className={job.resultSummary?.serialNumber ? 'text-emerald-400' : 'text-zinc-500'}>{job.resultSummary?.serialNumber || 'Not returned'}</strong></span>
+                        <span>MAC: <strong className="text-zinc-200">{job.resultSummary?.macAddress || 'Not returned'}</strong></span>
+                        {job.resultSummary?.hostname && <span>Host: <strong className="text-zinc-200">{job.resultSummary.hostname}</strong></span>}
+                      </div>
                     </div>
 
                     <div className="flex items-center space-x-3">
@@ -525,7 +534,7 @@ export const DiscoveryModule: React.FC = () => {
               <div className="bg-zinc-950 p-3 border border-zinc-800 rounded text-[11px] space-y-1.5 text-zinc-300 max-h-[380px] overflow-y-auto font-mono">
                 {safeSelectedJobLog.map((log, idx) => (
                   <div key={idx} className="flex space-x-2">
-                    <span className="text-red-500 font-bold">&gt;</span>
+                    <span className="text-red-500 font-bold">{'>'}</span>
                     <span className={log.includes('completed') || log.includes('SUCCESS') ? 'text-emerald-400 font-bold' : 'text-zinc-300'}>{log}</span>
                   </div>
                 ))}
@@ -767,10 +776,10 @@ export const DiscoveryModule: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="text-[11px] text-zinc-300 flex items-center space-x-1.5">
                         <span className="bg-red-950 text-red-400 border border-red-800 text-[10px] font-bold px-1.5 py-0.2 rounded">RECOMMENDED</span>
-                        <strong className="text-white">Method 1 (Instant 1-Click Copy & Paste into PowerShell):</strong>
+                        <strong className="text-white">Method 1 (Download an Enrolled PowerShell Collector):</strong>
                       </div>
                       <button
-                        onClick={() => handleCopyRawScript('Windows')}
+                        onClick={() => handleDownloadScript('Windows')}
                         className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded text-[11px] flex items-center space-x-1.5 cursor-pointer shadow-md shadow-red-950"
                       >
                         <FileCode2 className="w-3.5 h-3.5" />
@@ -778,7 +787,7 @@ export const DiscoveryModule: React.FC = () => {
                       </button>
                     </div>
                     <p className="text-[10px] text-zinc-400">
-                      Click the button above, open an elevated PowerShell prompt on your Windows device, press <strong className="text-zinc-200">Ctrl + V</strong>, and hit <strong className="text-zinc-200">Enter</strong>. It immediately gathers hardware, CPU, RAM, disks, network, and software registry metrics.
+                      Download the enrolled script, then run Method 2. It gathers hardware, CPU, RAM, disks, network, and installed software, and reports success only after the server accepts the inventory.
                     </p>
                   </div>
 
@@ -803,7 +812,7 @@ export const DiscoveryModule: React.FC = () => {
                   {/* Method C: Online Direct Fetch */}
                   <div className="space-y-1.5">
                     <div className="text-[11px] text-zinc-400">
-                      <strong className="text-white">Method 3 (Public Gateway One-Liner):</strong>
+                      <strong className="text-white">Method 3 (Same command, after download):</strong>
                     </div>
                     <div className="bg-zinc-950 p-2.5 rounded border border-zinc-800 flex items-center justify-between font-mono text-[11px] text-zinc-200">
                       <code className="text-red-400 truncate mr-2">
@@ -1464,6 +1473,7 @@ export const DiscoveryModule: React.FC = () => {
                   <option value="SSH">Linux SSH Key</option>
                   <option value="SNMP">SNMP v2c / v3 Network Devices</option>
                   <option value="Cloud AWS">AWS Cloud API Connector</option>
+                  <option value="SCA">Software Composition Analysis (SCA)</option>
                 </select>
               </div>
 

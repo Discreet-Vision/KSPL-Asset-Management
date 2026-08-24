@@ -47,6 +47,74 @@ import {
   Terminal,
 } from 'lucide-react';
 
+type DiscoveryRecord = Record<string, unknown>;
+
+/** SNMP collectors commonly expose the printer serial as `S/N` rather than
+ * the CMDB field name. Accept common variants without inventing a value. */
+const getSnmpSerialNumber = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as DiscoveryRecord;
+  const serialKeys = [
+    'S/N',
+    's/n',
+    'serialNumber',
+    'serial_number',
+    'serial',
+    'Serial Number',
+    'deviceSerialNumber',
+    'prtGeneralSerialNumber',
+  ];
+
+  for (const key of serialKeys) {
+    const candidate = record[key];
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+
+  for (const key of ['asset', 'device', 'data', 'attributes', 'customAttributes', 'snmp']) {
+    const nestedSerial = getSnmpSerialNumber(record[key]);
+    if (nestedSerial) return nestedSerial;
+  }
+  return undefined;
+};
+
+const asNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  // SNMP gateways often send counters as strings with thousands separators.
+  // Do not turn arbitrary labels (for example, "Up to 10,000 pages") into a
+  // counter, but accept a numeric string such as "14,280".
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/,/g, '');
+    if (normalized && Number.isFinite(Number(normalized))) return Number(normalized);
+  }
+  return undefined;
+};
+};
+
+/** Reads a real observation regardless of whether the collector uses the
+ * normalized CMDB key, a human-readable key, or nests it under SNMP/printer.
+ * This intentionally returns undefined when no collector value exists: the UI
+ * must never substitute made-up printer usage data. */
+const getObservationValue = (value: unknown, keys: string[]): unknown => {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as DiscoveryRecord;
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null && record[key] !== '') return record[key];
+  }
+  for (const container of ['printerTelemetry', 'printer', 'telemetry', 'snmp', 'rawAttributes', 'attributes', 'data', 'device']) {
+    const nested = getObservationValue(record[container], keys);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+};
+
+const getObservationNumber = (value: unknown, keys: string[]) =>
+  asNumber(getObservationValue(value, keys));
+
+const getObservationText = (value: unknown, keys: string[]): string | undefined => {
+  const result = getObservationValue(value, keys);
+  return typeof result === 'string' && result.trim() ? result.trim() : undefined;
+};
+
 interface HardwareAssetDetailModalProps {
   asset: ConfigurationItem | null;
   isOpen: boolean;
@@ -142,6 +210,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
   const [copiedJson, setCopiedJson] = useState(false);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoverySuccessMsg, setDiscoverySuccessMsg] = useState<string | null>(null);
+  const [discoveryFailed, setDiscoveryFailed] = useState(false);
 
   // Sync edit state when asset changes
   React.useEffect(() => {
@@ -197,7 +266,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
   const isPrinter = useMemo(() => {
     if (!asset) return false;
     const s = `${asset.ciClassName || ''} ${asset.category || ''} ${asset.name || ''} ${asset.model || ''} ${asset.operatingSystem || ''}`.toLowerCase();
-    return s.includes('printer') || s.includes('mfp') || s.includes('laserjet') || s.includes('laser mfp') || s.includes('jetdirect') || s.includes('hpc01803') || s.includes('copier');
+    return s.includes('printer') || s.includes('mfp') || s.includes('laserjet') || s.includes('laser mfp') || s.includes('jetdirect') || s.includes('copier');
   }, [asset]);
 
   const isNetworkDevice = useMemo(() => {
@@ -212,6 +281,16 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
     return s.includes('monitor') || s.includes('display') || s.includes('screen');
   }, [asset, isPrinter, isNetworkDevice]);
 
+  // Prefer the SNMP `S/N` observation while the discovery service normalizes it
+  // into the canonical CMDB serialNumber field.
+  const discoveredSerialNumber = useMemo(
+    () =>
+      getSnmpSerialNumber(asset?.customAttributes) ||
+      getObservationText(asset?.customAttributes, ['Hardware Serial Number', 'hardwareSerialNumber']) ||
+      asset?.serialNumber,
+    [asset]
+  );
+
   // Derived Printer Telemetry & Consumables
   const printerDetails = useMemo(() => {
     if (!asset || !isPrinter) return null;
@@ -220,44 +299,58 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
     const isColor = modelStr.toLowerCase().includes('color') || custom.colorCapable === 'Yes' || custom.colorCapable === true;
 
     return {
-      modelName: asset.model || 'HP Laser MFP 131 133 135-138 (HPC01803A2F5DB)',
-      formFactor: 'Multifunction Laser Printer & Scanner (MFP)',
-      printTechnology: isColor ? 'Electrophotographic Color Laser' : 'Monochrome Laser Electrophotography',
-      printResolution: custom.printResolution || '1200 x 1200 dpi (Effective Output)',
-      printSpeedPpm: custom.printSpeedPpm || 21,
-      firstPageOutSec: custom.firstPageOutSec || '8.3 seconds',
-      duplexSupport: custom.duplexSupport || 'Manual / Automatic Duplex',
-      dutyCycleMonthly: custom.dutyCycleMonthly || '10,000 pages / month',
-      recommendedMonthlyVolume: custom.recommendedMonthlyVolume || '100 - 2,000 pages',
+      modelName: asset.model || undefined,
+      formFactor: custom.formFactor || custom.printerType || asset.deviceType || undefined,
+      printTechnology: custom.printTechnology || (isColor ? 'Color Laser' : undefined),
+      printResolution: custom.printResolution || undefined,
+      printSpeedPpm: asNumber(custom.printSpeedPpm),
+      firstPageOutSec: custom.firstPageOutSec || undefined,
+      duplexSupport: custom.duplexSupport || undefined,
+      dutyCycleMonthly: getObservationText(asset, [
+        'dutyCycleMonthly', 'monthlyDutyCycle', 'monthly_duty_cycle', 'Monthly Duty Cycle',
+      ]),
+      recommendedMonthlyVolume: custom.recommendedMonthlyVolume || undefined,
 
       // Consumables & Supplies
-      tonerBlackPct: custom.tonerBlackLevelPct ?? custom.tonerBlackPct ?? 88,
-      tonerCyanPct: isColor ? (custom.tonerCyanLevelPct ?? 92) : null,
-      tonerMagentaPct: isColor ? (custom.tonerMagentaLevelPct ?? 90) : null,
-      tonerYellowPct: isColor ? (custom.tonerYellowLevelPct ?? 94) : null,
-      drumUnitLifePct: custom.drumUnitLifePct ?? 95,
-      fuserLifePct: custom.fuserLifePct ?? 97,
-      wasteTonerBoxStatus: custom.wasteTonerBoxStatus || 'Normal (OK)',
+      tonerBlackPct: asNumber(custom.tonerBlackLevelPct ?? custom.tonerBlackPct),
+      tonerCyanPct: isColor ? asNumber(custom.tonerCyanLevelPct) : undefined,
+      tonerMagentaPct: isColor ? asNumber(custom.tonerMagentaLevelPct) : undefined,
+      tonerYellowPct: isColor ? asNumber(custom.tonerYellowLevelPct) : undefined,
+      drumUnitLifePct: asNumber(custom.drumUnitLifePct),
+      fuserLifePct: asNumber(custom.fuserLifePct),
+      wasteTonerBoxStatus: custom.wasteTonerBoxStatus || undefined,
 
       // Page Counters
-      totalPagesPrinted: custom.totalPagesPrinted ?? 14280,
-      monoPagesPrinted: custom.monoPagesPrinted ?? 12450,
-      colorPagesPrinted: isColor ? (custom.colorPagesPrinted ?? 1830) : 0,
-      scanCount: custom.scanCount ?? 3420,
-      copyCount: custom.copyCount ?? 2190,
-      jamCountLifetime: custom.jamCountLifetime ?? 4,
+      totalPagesPrinted: getObservationNumber(asset, [
+        'totalPagesPrinted', 'total_pages_printed', 'totalPages', 'Total Pages Printed', 'prtMarkerLifeCount',
+      ]),
+      monoPagesPrinted: getObservationNumber(asset, [
+        'monoPagesPrinted', 'monochromePages', 'monochrome_pages', 'monoPageCount', 'Monochrome Pages', 'prtMarkerLifeCountMono',
+      ]),
+      colorPagesPrinted: isColor ? getObservationNumber(asset, [
+        'colorPagesPrinted', 'colourPagesPrinted', 'color_pages_printed', 'Color Pages', 'prtMarkerLifeCountColor',
+      ]) : undefined,
+      scanCount: getObservationNumber(asset, [
+        'scanCount', 'totalScans', 'total_scans', 'scannerCount', 'Total Scans (ADF/Platen)', 'scan_counter',
+      ]),
+      copyCount: getObservationNumber(asset, [
+        'copyCount', 'copierOutputPages', 'copier_output_pages', 'totalCopies', 'Copier Output Pages', 'copy_counter',
+      ]),
+      jamCountLifetime: getObservationNumber(asset, [
+        'jamCountLifetime', 'lifetimePaperJams', 'paperJamCount', 'paper_jam_count', 'Lifetime Paper Jams', 'jam_counter',
+      ]),
 
       // Paper Handling & Trays
-      tray1Capacity: '150-Sheet Standard Input Tray',
-      tray2Capacity: '100-Sheet Output Bin',
-      supportedMedia: 'A4, A5, B5 (JIS), Envelope (DL, C5), Cardstock, Plain, Thick',
-      adfCapacity: '40-Sheet Automatic Document Feeder (ADF)',
+      tray1Capacity: custom.tray1Capacity || undefined,
+      tray2Capacity: custom.tray2Capacity || undefined,
+      supportedMedia: custom.supportedMedia || undefined,
+      adfCapacity: custom.adfCapacity || undefined,
 
       // Firmware & Connectivity
-      firmwareVersion: asset.operatingSystem || custom.firmwareVersion || 'V3.82.01.15_20240810 (JetDirect)',
-      ewsUrl: `http://${asset.ipAddress || '192.168.1.30'}/#hpHomescreen`,
-      activeProtocols: ['SNMP v1/v2c (Port 161)', 'RAW Port 9100', 'IPP / IPPS (Port 631)', 'WSD (Web Services on Devices)', 'AirPrint', 'Mopria Certified'],
-      driverName: custom.driverName || `${asset.manufacturer || 'HP'} Laser MFP 131 133 135-138 PCLmS`,
+      firmwareVersion: custom.firmwareVersion || asset.operatingSystem || undefined,
+      ewsUrl: custom.ewsUrl || (asset.ipAddress ? `http://${asset.ipAddress}` : undefined),
+      activeProtocols: Array.isArray(custom.activeProtocols) ? custom.activeProtocols.filter((item): item is string => typeof item === 'string') : [],
+      driverName: custom.driverName || undefined,
       printQueueName: custom.printQueueName || (asset.hostname || asset.name),
     };
   }, [asset, isPrinter]);
@@ -642,15 +735,43 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
   const handleTriggerDiscovery = async () => {
     setIsDiscovering(true);
     setDiscoverySuccessMsg(null);
+    setDiscoveryFailed(false);
     try {
-      const res = await fetch(`/api/v1/assets/${asset.id}/discover`, { method: 'POST' }).catch(() => null);
-      setTimeout(() => {
-        setIsDiscovering(false);
-        setDiscoverySuccessMsg(`Device telemetry refreshed successfully via ${asset.discoverySource || 'Endpoint Agent'}.`);
-        addAuditEntry('DISCOVERY', 'ConfigurationItem', asset.id, `Manual live discovery triggered for ${asset.name}`);
-        setTimeout(() => setDiscoverySuccessMsg(null), 4000);
-      }, 800);
-    } catch {
+      if (!asset.ipAddress) throw new Error('This asset has no IP address to poll.');
+      const res = await fetch('/api/discovery/printers/poll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ipAddress: asset.ipAddress }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.success) throw new Error(result.error || `SNMP polling failed (${res.status})`);
+
+      const telemetry = (result.telemetry || {}) as DiscoveryRecord;
+      const snmpSerial = getSnmpSerialNumber(telemetry);
+      const now = result.collectedAt || new Date().toISOString();
+      const updates: Partial<ConfigurationItem> = {
+        ...(snmpSerial ? { serialNumber: snmpSerial } : {}),
+        ...(typeof telemetry.hostname === 'string' ? { hostname: telemetry.hostname } : {}),
+        ...(typeof telemetry.macAddress === 'string' ? { macAddress: telemetry.macAddress } : {}),
+        discoverySource: 'Agentless',
+        lastDiscovered: now,
+        customAttributes: { ...asset.customAttributes, ...telemetry },
+      };
+      const updatedAsset = { ...asset, ...updates } as ConfigurationItem;
+      updateConfigurationItem(asset.id, updates);
+      onAssetUpdated?.(updatedAsset);
+
+      setDiscoverySuccessMsg(
+        `SNMP refreshed: ${result.observations} live OID${result.observations === 1 ? '' : 's'} received.` +
+        (result.warning ? ` ${result.warning}` : '')
+      );
+      addAuditEntry('DISCOVERY', 'ConfigurationItem', asset.id, `Live SNMP poll completed for ${asset.ipAddress}; ${result.observations} OIDs received.`);
+      setTimeout(() => setDiscoverySuccessMsg(null), 4000);
+    } catch (error: any) {
+      setDiscoveryFailed(true);
+      setDiscoverySuccessMsg(error?.message || 'Discovery could not be completed. No device data was changed.');
+      setTimeout(() => setDiscoverySuccessMsg(null), 4000);
+    } finally {
       setIsDiscovering(false);
     }
   };
@@ -680,7 +801,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
       assetId: asset.id,
       assetTag: asset.assetTag,
       hostname: asset.hostname || asset.name,
-      serialNumber: asset.serialNumber,
+      serialNumber: discoveredSerialNumber,
       ipAddress: asset.ipAddress,
       macAddress: asset.macAddress,
       manufacturer: asset.manufacturer,
@@ -727,7 +848,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                 </span>
               </div>
               <div className="text-[11px] text-zinc-400 font-mono flex items-center space-x-2 mt-0.5">
-                <span>SN: <strong className="text-white">{asset.serialNumber}</strong></span>
+                <span>SN: <strong className="text-white">{discoveredSerialNumber || 'Not reported'}</strong></span>
                 <span>•</span>
                 <span>IP: <strong className="text-white">{asset.ipAddress || '10.20.4.12'}</strong></span>
                 <span>•</span>
@@ -789,12 +910,12 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
 
         {/* Discovery Success Notification */}
         {discoverySuccessMsg && (
-          <div className="bg-emerald-950/80 border-b border-emerald-800 text-emerald-300 px-4 py-2 flex items-center justify-between text-xs font-mono animate-in fade-in">
+          <div className={`${discoveryFailed ? 'bg-red-950/80 border-red-800 text-red-300' : 'bg-emerald-950/80 border-emerald-800 text-emerald-300'} border-b px-4 py-2 flex items-center justify-between text-xs font-mono animate-in fade-in`}>
             <span className="flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              {discoveryFailed ? <AlertTriangle className="w-4 h-4 text-red-400" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
               <span>{discoverySuccessMsg}</span>
             </span>
-            <span className="text-[10px] text-emerald-500">Quality Score: 98.6%</span>
+            {!discoveryFailed && <span className="text-[10px] text-emerald-500">Live collector response</span>}
           </div>
         )}
 
@@ -1045,7 +1166,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                   </div>
                   <div>
                     <span className="text-zinc-500 block text-[10px]">Hardware Serial Number:</span>
-                    <span className="font-bold text-white font-mono">{asset.serialNumber}</span>
+                    <span className="font-bold text-white font-mono">{discoveredSerialNumber || 'Not reported'}</span>
                   </div>
                   <div>
                     <span className="text-zinc-500 block text-[10px]">Primary IPv4 Address:</span>
@@ -1418,34 +1539,34 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                         <span>PRINT ENGINE & HARDWARE SPECIFICATIONS</span>
                       </div>
                       <span className="bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold">
-                        {printerDetails.formFactor}
+                        {printerDetails.formFactor || 'Not reported'}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-zinc-300">
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Model & Series:</span>
-                        <span className="font-bold text-white text-sm">{printerDetails.modelName}</span>
+                        <span className="font-bold text-white text-sm">{printerDetails.modelName || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Print Technology:</span>
-                        <span className="font-bold text-white">{printerDetails.printTechnology}</span>
+                        <span className="font-bold text-white">{printerDetails.printTechnology || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Effective Resolution:</span>
-                        <span className="font-bold text-white font-mono">{printerDetails.printResolution}</span>
+                        <span className="font-bold text-white font-mono">{printerDetails.printResolution || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Print Speed (PPM):</span>
-                        <span className="font-bold text-emerald-400">{printerDetails.printSpeedPpm} PPM (A4/Letter)</span>
+                        <span className="font-bold text-emerald-400">{printerDetails.printSpeedPpm === undefined ? 'Not reported' : `${printerDetails.printSpeedPpm} PPM`}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">First Page Out Time:</span>
-                        <span className="font-bold text-white">{printerDetails.firstPageOutSec}</span>
+                        <span className="font-bold text-white">{printerDetails.firstPageOutSec || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Duplex Printing:</span>
-                        <span className="font-bold text-cyan-400">{printerDetails.duplexSupport}</span>
+                        <span className="font-bold text-cyan-400">{printerDetails.duplexSupport || 'Not reported'}</span>
                       </div>
                     </div>
                   </div>
@@ -1457,35 +1578,35 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                         <Sparkles className="w-4 h-4 text-red-500" />
                         <span>CONSUMABLES & SUPPLIES STATUS (LIVE SNMP)</span>
                       </div>
-                      <span className="text-emerald-400 text-[10px] font-bold">All Consumables Optimal</span>
+                      <span className="text-zinc-500 text-[10px] font-bold">SNMP reported values only</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    {false && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                       {/* Black Toner */}
                       <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-[11px]">
                           <span className="text-zinc-400 font-bold">Black Toner Cartridge</span>
-                          <span className="font-bold text-white">{printerDetails.tonerBlackPct}%</span>
+                          <span className="font-bold text-white">{printerDetails.tonerBlackPct === undefined ? '—' : `${printerDetails.tonerBlackPct}%`}</span>
                         </div>
                         <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
                           <div
                             className="bg-zinc-100 h-full rounded-full"
-                            style={{ width: `${printerDetails.tonerBlackPct}%` }}
+                            style={{ width: `${printerDetails.tonerBlackPct ?? 0}%` }}
                           />
                         </div>
-                        <div className="text-[10px] text-zinc-500">HP 105A / 106A / 107A High-Yield</div>
+                        <div className="text-[10px] text-zinc-500">Supply identifier not reported by SNMP</div>
                       </div>
 
                       {/* Drum Unit Life */}
                       <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-[11px]">
                           <span className="text-zinc-400 font-bold">Imaging Drum Unit</span>
-                          <span className="font-bold text-emerald-400">{printerDetails.drumUnitLifePct}%</span>
+                          <span className="font-bold text-emerald-400">{printerDetails.drumUnitLifePct === undefined ? '—' : `${printerDetails.drumUnitLifePct}%`}</span>
                         </div>
                         <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
                           <div
                             className="bg-emerald-500 h-full rounded-full"
-                            style={{ width: `${printerDetails.drumUnitLifePct}%` }}
+                            style={{ width: `${printerDetails.drumUnitLifePct ?? 0}%` }}
                           />
                         </div>
                         <div className="text-[10px] text-zinc-500">Long-Life Photoconductor Drum</div>
@@ -1495,12 +1616,12 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                       <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-[11px]">
                           <span className="text-zinc-400 font-bold">Fuser Unit Life</span>
-                          <span className="font-bold text-cyan-400">{printerDetails.fuserLifePct}%</span>
+                          <span className="font-bold text-cyan-400">{printerDetails.fuserLifePct === undefined ? '—' : `${printerDetails.fuserLifePct}%`}</span>
                         </div>
                         <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
                           <div
                             className="bg-cyan-500 h-full rounded-full"
-                            style={{ width: `${printerDetails.fuserLifePct}%` }}
+                            style={{ width: `${printerDetails.fuserLifePct ?? 0}%` }}
                           />
                         </div>
                         <div className="text-[10px] text-zinc-500">High-Temperature Ceramic Fuser</div>
@@ -1510,15 +1631,46 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                       <div className="bg-black border border-zinc-800 p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-[11px]">
                           <span className="text-zinc-400 font-bold">Waste Toner Box</span>
-                          <span className="font-bold text-emerald-400">{printerDetails.wasteTonerBoxStatus}</span>
+                          <span className="font-bold text-emerald-400">{printerDetails.wasteTonerBoxStatus || 'Not reported'}</span>
                         </div>
                         <div className="w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden">
                           <div className="bg-emerald-500 h-full rounded-full" style={{ width: '15%' }} />
                         </div>
-                        <div className="text-[10px] text-zinc-500">Capacity Remaining: ~85%</div>
+                        <div className="text-[10px] text-zinc-500">Awaiting SNMP supply status</div>
                       </div>
-                    </div>
+                    </div>}
+                    {Array.isArray((asset.customAttributes as any)?.snmpConsumables) && (asset.customAttributes as any).snmpConsumables.length > 0 && (
+                      <div className="overflow-x-auto border border-zinc-800 rounded-lg">
+                        <table className="w-full text-left text-[11px]">
+                          <thead className="bg-black text-zinc-500 uppercase">
+                            <tr><th className="p-2">SNMP supply</th><th className="p-2">Current level</th><th className="p-2">Capacity</th><th className="p-2">Remaining</th></tr>
+                          </thead>
+                          <tbody>
+                            {(asset.customAttributes as any).snmpConsumables.map((supply: any) => (
+                              <tr key={supply.id} className="border-t border-zinc-800 text-zinc-300">
+                                <td className="p-2 font-medium text-white">{supply.description}</td>
+                                <td className="p-2">{supply.level ?? 'Not reported'}</td>
+                                <td className="p-2">{supply.maxCapacity ?? 'Not reported'}</td>
+                                <td className="p-2">{supply.remainingPct === undefined ? 'Not reported' : `${supply.remainingPct}%`}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
+
+                  {Array.isArray((asset.customAttributes as any)?.snmpPrinterMibObservations) && (asset.customAttributes as any).snmpPrinterMibObservations.length > 0 && (
+                    <details className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+                      <summary className="cursor-pointer text-xs font-bold text-white">ALL PRINTER-MIB OBSERVATIONS ({(asset.customAttributes as any).snmpPrinterMibObservations.length})</summary>
+                      <div className="mt-3 max-h-72 overflow-auto border border-zinc-800 rounded">
+                        <table className="w-full text-left text-[10px] font-mono">
+                          <thead className="sticky top-0 bg-black text-zinc-500"><tr><th className="p-2">OID</th><th className="p-2">Type</th><th className="p-2">Returned value</th></tr></thead>
+                          <tbody>{(asset.customAttributes as any).snmpPrinterMibObservations.map((item: any) => <tr key={item.oid} className="border-t border-zinc-800"><td className="p-2 text-cyan-400">{item.oid}</td><td className="p-2 text-zinc-500">{item.type}</td><td className="p-2 text-zinc-200 break-all">{item.value}</td></tr>)}</tbody>
+                        </table>
+                      </div>
+                    </details>
+                  )}
 
                   {/* Page Counters & Usage Telemetry */}
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
@@ -1530,37 +1682,37 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Total Pages Printed</div>
                         <div className="text-base font-black text-white mt-1 font-mono">
-                          {printerDetails.totalPagesPrinted.toLocaleString()}
+                          {printerDetails.totalPagesPrinted?.toLocaleString() ?? '—'}
                         </div>
                       </div>
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Monochrome Pages</div>
                         <div className="text-base font-black text-white mt-1 font-mono">
-                          {printerDetails.monoPagesPrinted.toLocaleString()}
+                          {printerDetails.monoPagesPrinted?.toLocaleString() ?? '—'}
                         </div>
                       </div>
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Total Scans (ADF/Platen)</div>
                         <div className="text-base font-black text-cyan-400 mt-1 font-mono">
-                          {printerDetails.scanCount.toLocaleString()}
+                          {printerDetails.scanCount?.toLocaleString() ?? '—'}
                         </div>
                       </div>
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Copier Output Pages</div>
                         <div className="text-base font-black text-white mt-1 font-mono">
-                          {printerDetails.copyCount.toLocaleString()}
+                          {printerDetails.copyCount?.toLocaleString() ?? '—'}
                         </div>
                       </div>
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Lifetime Paper Jams</div>
                         <div className="text-base font-black text-emerald-400 mt-1 font-mono">
-                          {printerDetails.jamCountLifetime} Jams
+                          {printerDetails.jamCountLifetime === undefined ? '—' : `${printerDetails.jamCountLifetime} Jams`}
                         </div>
                       </div>
                       <div className="bg-black border border-zinc-800 p-2.5 rounded">
                         <div className="text-zinc-500 text-[10px]">Monthly Duty Cycle</div>
                         <div className="text-base font-black text-zinc-300 mt-1 font-mono">
-                          {printerDetails.dutyCycleMonthly}
+                          {printerDetails.dutyCycleMonthly || 'Not reported'}
                         </div>
                       </div>
                     </div>
@@ -1575,19 +1727,19 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-zinc-300">
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Input Paper Tray:</span>
-                        <span className="font-bold text-white">{printerDetails.tray1Capacity}</span>
+                        <span className="font-bold text-white">{printerDetails.tray1Capacity || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Output Capacity:</span>
-                        <span className="font-bold text-white">{printerDetails.tray2Capacity}</span>
+                        <span className="font-bold text-white">{printerDetails.tray2Capacity || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Document Feeder (ADF):</span>
-                        <span className="font-bold text-white">{printerDetails.adfCapacity}</span>
+                        <span className="font-bold text-white">{printerDetails.adfCapacity || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Supported Media Sizes:</span>
-                        <span className="font-bold text-zinc-300">{printerDetails.supportedMedia}</span>
+                        <span className="font-bold text-zinc-300">{printerDetails.supportedMedia || 'Not reported'}</span>
                       </div>
                     </div>
                   </div>
@@ -1865,15 +2017,15 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3 gap-x-6 text-zinc-300">
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Primary IPv4 Address:</span>
-                        <span className="font-bold text-emerald-400 font-mono text-sm">{asset.ipAddress || '192.168.1.30'}</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">{asset.ipAddress || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Physical MAC Address:</span>
-                        <span className="font-bold text-white font-mono">{asset.macAddress || 'C0:18:03:A2:F5:DB'}</span>
+                        <span className="font-bold text-white font-mono">{asset.macAddress || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Hostname / mDNS:</span>
-                        <span className="font-bold text-white font-mono">{asset.hostname || 'HPC01803A2F5DB.local'}</span>
+                        <span className="font-bold text-white font-mono">{asset.hostname || 'Not reported'}</span>
                       </div>
                       <div>
                         <span className="text-zinc-500 block text-[10px]">Subnet Mask:</span>
@@ -2010,8 +2162,8 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                       <tbody className="divide-y divide-zinc-800 text-zinc-300">
                         <tr>
                           <td className="p-2 font-bold text-white">Windows 11 / 10 (x64)</td>
-                          <td className="p-2">HP Laser 13x Series PCLmS Driver</td>
-                          <td className="p-2 font-mono">WSD-c01803a2f5db / TCP 9100</td>
+                          <td className="p-2">{printerDetails.driverName || 'Not reported'}</td>
+                          <td className="p-2 font-mono">{asset.hostname || asset.ipAddress || 'Not reported'}</td>
                           <td className="p-2">RAW / EMF Spooling</td>
                           <td className="p-2"><span className="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold">Ready</span></td>
                         </tr>
@@ -2448,7 +2600,7 @@ export const HardwareAssetDetailModal: React.FC<HardwareAssetDetailModalProps> =
                           assetId: asset.id,
                           assetTag: asset.assetTag,
                           hostname: asset.hostname || asset.name,
-                          serialNumber: asset.serialNumber,
+                          serialNumber: discoveredSerialNumber,
                           ipAddress: asset.ipAddress,
                           macAddress: asset.macAddress,
                           manufacturer: asset.manufacturer,
